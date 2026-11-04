@@ -81,7 +81,7 @@
       <div class="gauge">${gauge(s.score)}</div>
       <div class="score num">${isNum(s.score) ? fmt(s.score, 0) : '—'}</div>
       <div class="rating">${esc(s.rating ?? '')}</div>
-      <div class="muted" style="font-size:12px">資料日 ${esc(s.date ?? '')}</div>
+      <div class="muted" style="font-size:12px">${s.date ? `資料日 ${esc(s.date)}${s.partial ? '（盤中，收盤後更新）' : ''}` : ''}</div>
       <div class="prevs">${prev('前一日', s.prev?.d1)}${prev('一週前', s.prev?.w1)}${prev('一個月前', s.prev?.m1)}${prev('一年前', s.prev?.y1)}</div>
     </div>`;
   }

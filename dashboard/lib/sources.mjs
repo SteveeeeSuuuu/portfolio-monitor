@@ -158,3 +158,12 @@ export async function yahooEarnings(symbols) {
 }
 
 export { sleep };
+
+/** 財報倒數：raw = { SYMBOL: { ts(秒), estimated } }，nowSec 為秒；已過一天以上的略去 */
+export function earningsDays(raw, nowSec) {
+  return Object.fromEntries(
+    Object.entries(raw)
+      .filter(([, v]) => v.ts > nowSec - 86400)
+      .map(([k, v]) => [k, { date: new Date(v.ts * 1000).toISOString().slice(0, 10), daysLeft: Math.max(0, Math.ceil((v.ts - nowSec) / 86400)), estimated: v.estimated }]),
+  );
+}

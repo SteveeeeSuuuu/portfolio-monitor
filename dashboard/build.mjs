@@ -4,7 +4,7 @@
 import { mkdir, writeFile, copyFile, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { yahooDaily, nasdaqDaily, cnnFearGreed, yahooEarnings, sleep } from './lib/sources.mjs';
+import { yahooDaily, nasdaqDaily, cnnFearGreed, yahooEarnings, earningsDays, sleep } from './lib/sources.mjs';
 import { updateChips, summarizeChips } from './lib/chips.mjs';
 import { analyze, DEFAULT_STRATEGIES, DECAY_THRESHOLD, DECAY_WINDOW } from './lib/strategies.mjs';
 import { sma, rsi, last } from './lib/indicators.mjs';
@@ -82,13 +82,14 @@ function changes(bars) {
   };
 }
 
-function packSentiment(res, keepDays = 260) {
+function packSentiment(res, partial = false, keepDays = 260) {
   const n = res.dates.length;
   const s = Math.max(0, n - keepDays);
   const score = last(res.score);
   const at = (k) => (n > k ? r2(res.score[n - 1 - k], 1) : null);
   return {
     date: res.dates[n - 1],
+    partial,
     score: r2(score, 1),
     rating: rating(score),
     prev: { d1: at(1), w1: at(5), m1: at(21), y1: at(252) },
@@ -116,19 +117,19 @@ async function main() {
   const sentiment = {};
   const need = (list) => list.every((s) => data[s]);
   try {
-    if (need(['^GSPC', '^VIX', 'SPY', 'TLT', 'HYG', 'IEF', 'RSP'])) sentiment.us = packSentiment(usSentiment(data));
+    if (need(['^GSPC', '^VIX', 'SPY', 'TLT', 'HYG', 'IEF', 'RSP'])) sentiment.us = packSentiment(usSentiment(data), data['^GSPC'].partial);
     else warnings.push('美股情緒分數：必要資料不足');
   } catch (e) {
     warnings.push(`美股情緒分數計算失敗：${e.message}`);
   }
   try {
-    if (need(['^TWII', 'TWD=X'])) sentiment.tw = packSentiment(twSentiment(data));
+    if (need(['^TWII', 'TWD=X'])) sentiment.tw = packSentiment(twSentiment(data), data['^TWII'].partial);
     else warnings.push('台股情緒分數：必要資料不足');
   } catch (e) {
     warnings.push(`台股情緒分數計算失敗：${e.message}`);
   }
   try {
-    if (need(['^SOX', '^GSPC'])) sentiment.semi = packSentiment(semiSentiment(data));
+    if (need(['^SOX', '^GSPC'])) sentiment.semi = packSentiment(semiSentiment(data), data['^SOX'].partial);
     else warnings.push('半導體情緒分數：必要資料不足');
   } catch (e) {
     warnings.push(`半導體情緒分數計算失敗：${e.message}`);
@@ -254,12 +255,7 @@ async function main() {
     try {
       const unders = [...new Set(POSITIONS.filter((p) => p.market === 'US').map((p) => p.underlyingSymbol))];
       const raw = await yahooEarnings(unders);
-      const now = Date.now() / 1000;
-      earnings = Object.fromEntries(
-        Object.entries(raw)
-          .filter(([, v]) => v.ts > now - 864e5)
-          .map(([k, v]) => [k, { date: new Date(v.ts * 1000).toISOString().slice(0, 10), daysLeft: Math.ceil((v.ts - now) / 864e5), estimated: v.estimated }]),
-      );
+      earnings = earningsDays(raw, Date.now() / 1000);
     } catch (e) {
       warnings.push(`財報日期取得失敗：${e.message}`);
     }

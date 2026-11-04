@@ -202,3 +202,12 @@ test('Yahoo chart 解析：去除 null、台北時區日期', () => {
   assert.equal(p.bars[0].adjclose, 1.4);
   assert.match(p.bars[0].date, /^\d{4}-\d{2}-\d{2}$/);
 });
+import { earningsDays } from '../lib/sources.mjs';
+test('財報倒數天數（秒為單位）', () => {
+  const now = Date.UTC(2026, 10, 4, 16, 0) / 1000;
+  const e = earningsDays({ TSLA: { ts: Date.UTC(2027, 0, 27, 21, 0) / 1000 }, NVDA: { ts: Date.UTC(2026, 10, 17, 21, 0) / 1000 }, SNDK: { ts: Date.UTC(2026, 9, 29, 21, 0) / 1000 } }, now);
+  assert.equal(e.TSLA.daysLeft, 85);
+  assert.equal(e.NVDA.daysLeft, 14);
+  assert.equal(e.NVDA.date, '2026-11-17');
+  assert.equal(e.SNDK, undefined);
+});
