@@ -126,3 +126,62 @@ test('rating 區間', () => {
   assert.equal(rating(60), '貪婪');
   assert.equal(rating(90), '極度貪婪');
 });
+
+// ---------- 籌碼解析 ----------
+import { twseTables, parseMargin, parseSbl, parseInst, parsePrices, parseTaifexCsv, summarizeChips, scenario } from '../lib/chips.mjs';
+
+test('TWSE 新舊格式表格解析', () => {
+  assert.equal(twseTables({ tables: [{ title: 'a', fields: ['x'], data: [[1]] }] }).length, 1);
+  assert.equal(twseTables({ fields9: ['x'], data9: [[1]], creditFields: ['項目'], creditList: [['融資金額(仟元)']] }).length, 2);
+});
+
+test('融資：融資金額（仟元→元）與個股融資張數', () => {
+  const j = {
+    stat: 'OK',
+    tables: [
+      { title: '信用交易統計', fields: ['項目', '買進', '賣出', '現金(券)償還', '前日餘額', '今日餘額'], data: [['融資(交易單位)', '1', '2', '3', '4', '5,000'], ['融券(交易單位)', '1', '2', '3', '4', '300'], ['融資金額(仟元)', '1', '2', '3', '4', '320,000,000']] },
+      { title: '融資融券彙總', fields: ['代號', '名稱', '買進', '賣出', '現金償還', '前日餘額', '今日餘額', '次一營業日限額', '買進', '賣出', '現券償還', '前日餘額', '今日餘額', '次一營業日限額', '資券互抵', '註記'], data: [['2330', '台積電', '0', '0', '0', '10', '12', '0', '0', '0', '0', '5', '7', '0', '0', '']] },
+    ],
+  };
+  const m = parseMargin(j);
+  assert.equal(m.finAmt, 320000000 * 1000);
+  assert.equal(m.shortUnits, 300);
+  assert.equal(m.perStock.get('2330'), 12); // 取融資的今日餘額，不是融券
+});
+
+test('借券賣出當日餘額、三大法人、收盤價', () => {
+  const sbl = { stat: 'OK', tables: [{ fields: ['代號', '名稱', '前日餘額', '賣出', '買進', '現券', '今日餘額', '次一營業日限額', '前日餘額', '當日賣出', '當日還券', '當日調整', '當日餘額', '次一營業日可限額', '備註'], data: [['2330', '台積電', '1', '0', '0', '0', '99', '0', '1,000', '0', '0', '0', '2,000', '0', ''], ['合計', '', '', '', '', '', '', '', '', '', '', '', '9,999', '', '']] }] };
+  assert.equal(parseSbl(sbl).get('2330'), 2000);
+  assert.equal(parseSbl(sbl).has('合計'), false);
+  const inst = { stat: 'OK', tables: [{ fields: ['單位名稱', '買進金額', '賣出金額', '買賣差額'], data: [['自營商(自行買賣)', '1', '1', '10'], ['自營商(避險)', '1', '1', '5'], ['投信', '1', '1', '-3'], ['外資及陸資(不含外資自營商)', '1', '1', '100'], ['外資自營商', '1', '1', '-1'], ['合計', '1', '1', '111']] }] };
+  assert.deepEqual(parseInst(inst), { foreign: 99, trust: -3, dealer: 15, total: 111 });
+  const px = { stat: 'OK', tables: [{ fields: ['證券代號', '證券名稱', '成交股數', '收盤價'], data: [['2330', '台積電', '1', '1,050.00'], ['9999', 'x', '0', '--']] }] };
+  const p = parsePrices(px);
+  assert.equal(p.get('2330'), 1050);
+  assert.equal(p.has('9999'), false);
+});
+
+test('TAIFEX CSV：只取外資，未平倉淨額', () => {
+  const csv = '日期,商品名稱,身份別,多方交易口數,多方交易契約金額(千元),空方交易口數,空方交易契約金額(千元),多空交易口數淨額,多空交易契約金額淨額(千元),多方未平倉口數,多方未平倉契約金額(千元),空方未平倉口數,空方未平倉契約金額(千元),多空未平倉口數淨額,多空未平倉契約金額淨額(千元)\n2026/11/03,臺股期貨,自營商,1,1,1,1,0,0,5,5,6,6,-1,-1\n2026/11/03,臺股期貨,外資,1,1,1,1,0,0,20000,1,45000,1,-25000,-1\n';
+  assert.deepEqual(parseTaifexCsv(csv), { '2026-11-03': { long: 20000, short: 45000, net: -25000 } });
+});
+
+test('籌碼追蹤表：5 / 20 日變化與累計、情境判斷', () => {
+  const days = {};
+  const dates = Array.from({ length: 25 }, (_, i) => `2026-10-${String(i + 1).padStart(2, '0')}`);
+  dates.forEach((d, i) => (days[d] = { finAmt: 100 + i, maint: 160 + i, sblShares: 1000, inst: { foreign: 10 }, fut: { net: -100 + i }, mcap: 10000 }));
+  const twii = dates.map((d, i) => ({ date: d, close: 20000 + i * 10 }));
+  const o = summarizeChips({ days }, twii);
+  close(o.margin.c5, (124 / 119 - 1) * 100, 1e-9);
+  close(o.margin.c20, (124 / 104 - 1) * 100, 1e-9);
+  assert.equal(o.maint.c5, 5);
+  assert.equal(o.foreignSpot.c5, 50);
+  assert.equal(o.foreignSpot.c20, 200);
+  assert.equal(o.foreignFut.c20, 20);
+  close(o.marginToCap.value, 1.24, 1e-9);
+  assert.equal(o.scenario.key, 'up_lev');
+  assert.equal(scenario({ taiex: { c5: -1 }, margin: { c5: -3 } }).key, 'down_delev');
+  assert.equal(scenario({ taiex: { c5: -1 }, margin: { c5: 1 } }).key, 'down_lev');
+  assert.equal(scenario({ taiex: { c5: 1 }, margin: { c5: 0.2 } }).key, 'up_nolev');
+  assert.equal(scenario({ taiex: { c5: -1 }, margin: { c5: -1 } }).key, 'down_mild');
+});

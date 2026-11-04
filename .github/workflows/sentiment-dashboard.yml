@@ -24,7 +24,7 @@ concurrency:
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -36,9 +36,16 @@ jobs:
         working-directory: dashboard
         run: node --test test/*.test.mjs
 
+      - name: 取得上次部署的籌碼快取
+        run: |
+          git fetch --depth=1 origin gh-pages 2>/dev/null \
+            && git show origin/gh-pages:chips-history.json > chips-history.json 2>/dev/null \
+            || echo '{"days":{}}' > chips-history.json
+          wc -c chips-history.json
+
       - name: 抓資料並產生網頁
         working-directory: dashboard
-        run: node build.mjs --out ../_site
+        run: node build.mjs --history ../chips-history.json --out ../_site
 
       - name: 部署到 gh-pages 分支
         uses: peaceiris/actions-gh-pages@v4

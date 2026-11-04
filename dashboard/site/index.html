@@ -129,6 +129,10 @@ td.r, th.r { text-align: right; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
 .hist-box { position: relative; height: 300px; }
+.scen-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
+.scen { border: 1px solid var(--grid); border-radius: 10px; padding: 10px 12px; opacity: .6; }
+.scen.on { opacity: 1; border: 2px solid var(--ink); }
+.scen-t { font-weight: 700; font-size: 13.5px; margin-bottom: 4px; }
 footer { margin-top: 40px; font-size: 12.5px; color: var(--muted); }
 footer h3 { font-size: 14px; color: var(--ink-2); }
 footer li { margin-bottom: 4px; }
@@ -165,7 +169,8 @@ footer li { margin-bottom: 4px; }
     <ul>
       <li><b>自算情緒分數（0–100）</b>：每個成分取「當日數值在過去 252 個交易日中的百分位」，再等權平均。0–25 極度恐懼、25–45 恐懼、45–55 中性、55–75 貪婪、75–100 極度貪婪（與 CNN Fear &amp; Greed 同區間）。分數是相對過去一年的位置，不是絕對估值。</li>
       <li><b>持倉策略</b>依專案 <code>strategy-interface.md</code>：ma-cross（MA5/MA20 交叉、跌破 MA5 警示）、adx-trend（ADX(14) &gt; 25 確認趨勢，下跌趨勢記為 WARN）、decay-monitor（耗損 = 標的報酬 × 槓桿 − ETF 報酬，用還原股價；未提供買進日，以近 60 個交易日估算，&gt; 5% 警示）、rsi-momentum（RSI(14) &gt;70 超買 / &lt;30 超賣；預設不用於槓桿 ETF，只列參考值）。最終訊號依 summarize()：有 SELL → SELL；有 WARN → WARN；BUY 數 &gt; HOLD 數 → BUY；其餘 HOLD。</li>
-      <li>資料來源：Yahoo Finance（價格）、CNN Fear &amp; Greed、臺灣證券交易所（三大法人）。由 GitHub Actions 每個交易日台股收盤後與美股收盤後自動更新。</li>
+      <li><b>台股籌碼</b>依《台股籌碼與市場槓桿觀察指南》：加權指數、融資餘額、融資維持率（估算）、借券賣出餘額、外資現貨買賣超、外資台指期多空淨額、融資餘額／市值，各列今日、五日、二十日變化，並以指數與融資的 5 日變化對應四種交叉判讀情境。</li>
+      <li>資料來源：Yahoo Finance（價格）、CNN Fear &amp; Greed、臺灣證券交易所（融資融券、借券、三大法人、收盤行情、上市公司基本資料）、臺灣期貨交易所（期貨三大法人）。由 GitHub Actions 每個交易日台股收盤後與美股收盤後自動更新。</li>
       <li>本頁僅供個人研究參考，不構成任何投資建議。</li>
     </ul>
   </footer>

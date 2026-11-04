@@ -245,6 +245,58 @@
     return `<div class="card scroll"><table><thead><tr><th>日期</th><th class="r">外資</th><th class="r">投信</th><th class="r">自營商</th><th class="r">合計</th></tr></thead><tbody>${rows.slice().reverse().map((r) => `<tr><td class="num">${esc(r.date)}</td><td class="r">${yi(r.foreign)}</td><td class="r">${yi(r.trust)}</td><td class="r">${yi(r.dealer)}</td><td class="r">${yi(r.total)}</td></tr>`).join('')}</tbody></table><div class="note">單位：新台幣億元（買賣超金額）。</div></div>`;
   }
 
+  // ---------- 台股籌碼與市場槓桿 ----------
+  const SCEN = [
+    ['up_lev', '指數上漲＋融資增加', '市場風險偏好升高、槓桿同步擴張。若融資占市值也快速上升，應留意追價與過熱風險。'],
+    ['up_nolev', '指數上漲＋融資持平或下降', '行情可能不是由融資槓桿推動；仍需檢查成交量、外資與產業集中度。'],
+    ['down_lev', '指數下跌＋融資增加', '可能有人持續攤平，槓桿在下跌過程中累積；若維持率同步下降，風險更值得注意。'],
+    ['down_delev', '指數下跌＋融資快速下降', '可能出現停損或去槓桿；若市場賣壓、維持率及成交量等訊號同時極端，才進一步評估是否接近賣壓釋放。'],
+  ];
+  function chipsSection(c) {
+    if (!c) return '';
+    const yi = (x, d = 1) => (isNum(x) ? fmt(x / 1e8, d) : '—');
+    const signed = (x, txt, d) => (isNum(x) ? `<span class="num ${x > 0 ? 'up' : x < 0 ? 'down' : ''}">${x > 0 ? '+' : ''}${txt ?? fmt(x, d)}</span>` : '<span class="muted">—</span>');
+    const wait = (r, k) => `<span class="muted" title="歷史資料逐日累積中">累積中（${r ? r.obs : 0}/${k + 1} 日）</span>`;
+    const c5 = (r, f) => (r && isNum(r.c5) ? f(r.c5) : wait(r, 5));
+    const c20 = (r, f) => (r && isNum(r.c20) ? f(r.c20) : wait(r, 20));
+    const pctF = (x) => pct(x);
+    const ppF = (d) => (x) => signed(x, `${fmt(x, d)} 個百分點`);
+    const lotsF = (x) => signed(x, `${Math.round(x).toLocaleString('en-US')} 口`);
+    const yiF = (x) => signed(x, `${fmt(x / 1e8, 1)} 億`);
+    const link = (u) => `<a href="${u}" target="_blank" rel="noopener" class="ink2" style="font-size:12px">官方頁面 ↗</a>`;
+    const rows = [
+      { name: '加權指數漲跌幅', sub: c.taiex ? `收盤 ${fmt(c.taiex.value, 2)}` : '', r: c.taiex, today: c.taiex ? pct(c.taiex.chg1d) : '—', f5: pctF, f20: pctF, url: 'https://www.twse.com.tw/zh/indices/taiex/mi-5mins-hist.html' },
+      { name: '融資餘額（上市）', sub: '金額，五日 / 二十日變化率', r: c.margin, today: c.margin ? `<b class="num">${yi(c.margin.value, 0)}</b> 億元` : '—', f5: pctF, f20: pctF, url: 'https://www.twse.com.tw/zh/trading/margin/mi-margn.html' },
+      { name: '融資維持率（上市・估算）', sub: 'Σ 個股融資張數 × 收盤價 ÷ 融資金額；與證交所儀表板口徑可能不同', r: c.maint, today: c.maint ? `<b class="num">${fmt(c.maint.value, 1)}%</b>` : '—', f5: ppF(1), f20: ppF(1), url: 'https://wwwc.twse.com.tw/dashboard/zh/credit/general.html' },
+      { name: '借券賣出餘額（上市）', sub: c.sblValue ? `約 ${yi(c.sblValue.value, 0)} 億元（以收盤價換算）；變化率以股數計` : '變化率以股數計', r: c.sbl, today: c.sbl ? `<b class="num">${fmt(c.sbl.value / 1e8, 2)}</b> 億股` : '—', f5: pctF, f20: pctF, url: 'https://www.twse.com.tw/zh/products/sbl/disclosures/info.html' },
+      { name: '外資現貨買賣超', sub: '外資及陸資＋外資自營商；五日 / 二十日為累計', r: c.foreignSpot, today: c.foreignSpot ? signed(c.foreignSpot.value, `${fmt(c.foreignSpot.value / 1e8, 1)} 億`) : '—', f5: yiF, f20: yiF, url: 'https://www.twse.com.tw/zh/trading/foreign/t86.html' },
+      { name: '外資台指期多空淨額', sub: '臺股期貨（TX）未平倉多單 − 空單；可能含避險 / 套利', r: c.foreignFut, today: c.foreignFut ? signed(c.foreignFut.value, `${Math.round(c.foreignFut.value).toLocaleString('en-US')} 口`) : '—', f5: lotsF, f20: lotsF, url: 'https://www.taifex.com.tw/cht/3/futContractsDate' },
+      { name: '融資餘額／市值（上市）', sub: '融資金額 ÷ 上市公司總市值（已發行股數 × 收盤價）', r: c.marginToCap, today: c.marginToCap ? `<b class="num">${fmt(c.marginToCap.value, 3)}%</b>` : '—', f5: ppF(3), f20: ppF(3), url: 'https://www.twse.com.tw/' },
+    ];
+    const tr = rows.map((x) => `<tr>
+      <td><b>${esc(x.name)}</b><div class="comp-desc">${esc(x.sub)}</div></td>
+      <td class="r" style="white-space:nowrap">${x.today}<div class="comp-desc">${x.r ? esc(x.r.date) : '無資料'}</div></td>
+      <td class="r" style="white-space:nowrap">${c5(x.r, x.f5)}</td>
+      <td class="r" style="white-space:nowrap">${c20(x.r, x.f20)}</td>
+      <td>${x.r ? spark(x.r.spark) : ''}</td>
+      <td style="white-space:nowrap">${link(x.url)}</td></tr>`).join('');
+    const sc = c.scenario;
+    const scen = SCEN.map(([k, t, d]) => `<div class="scen ${sc?.key === k ? 'on' : ''}"><div class="scen-t">${sc?.key === k ? '◆ 目前' : ''} ${esc(t)}</div><div class="comp-desc">${esc(d)}</div></div>`).join('');
+    const scHead = sc
+      ? `以 ${esc(sc.date)} 為準：加權指數 5 日 ${pct(sc.idx5)}、融資餘額 5 日 ${pct(sc.margin5)}${sc.key === 'down_mild' ? '。<b>指數下跌、融資小幅變動，介於典型情境之間</b>' : ''}`
+      : '融資資料不足，暫無法判斷';
+    return `<h2>台股籌碼與市場槓桿 <small>融資、借券、外資現貨與台指期交叉觀察</small></h2>
+      <div class="card scroll"><table><thead><tr><th>指標</th><th class="r">今日數值</th><th class="r">五日變化</th><th class="r">二十日變化</th><th>近 21 日</th><th>來源</th></tr></thead><tbody>${tr}</tbody></table>
+      <div class="note">證交所資料僅涵蓋上市市場（未含上櫃）。融資、借券資料約於晚間公布，故資料日可能比指數晚一天。漲跌顏色依頁首設定。</div></div>
+      <h2 style="margin-top:20px">交叉判讀 <small>融資 5 日變化 ±${sc ? sc.flat : 0.5}% 內視為持平，低於 ${sc ? sc.fast : -2}% 視為快速下降</small></h2>
+      <div class="card"><div style="font-size:13.5px;margin-bottom:10px">${scHead}</div><div class="grid scen-grid">${scen}</div>
+      <ul class="note" style="padding-left:18px;margin-bottom:0">
+        <li>這些是風險監控的輔助資訊，不是直接的買賣訊號。市場槓桿升溫時，避免只因指數上漲就持續提高個人槓桿；市場快速去槓桿時，先確認自身資金需求與風險承受度再考慮分批布局。</li>
+        <li>融資餘額不涵蓋所有槓桿（衍生性商品、機構融資、信貸資金等）；外資期貨空單不等於純粹看空；借券不等於放空，本頁採借券「賣出」餘額。</li>
+      </ul></div>
+      ${c.institutional?.length ? `<h2 style="margin-top:20px">三大法人買賣超 <small>近 ${c.institutional.length} 個交易日</small></h2>${instTable(c.institutional)}` : ''}`;
+  }
+
   // ---------- 主畫面 ----------
   let DATA = null;
   let histDays = Number(store.get('histDays')) || 260;
@@ -294,6 +346,8 @@
         ${s[compTab] ? compTable(s[compTab].components) : '<div class="muted">無資料</div>'}
       </div>
 
+      ${chipsSection(d.chips)}
+
       ${fg ? `<h2>CNN Fear &amp; Greed <small>官方指數（含 Put/Call、52 週新高低等無法自算的成分）</small></h2>
       <div class="grid g2">
         ${gaugeCard('CNN 恐懼與貪婪指數', fg.timestamp ? '更新 ' + new Date(fg.timestamp).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false }) : '', { ...fg, rating: ratingZh(fg.rating), date: '' })}
@@ -303,7 +357,6 @@
       <h2>持倉訊號 <small>${['SELL', 'WARN', 'BUY', 'HOLD'].filter((k) => counts[k]).map((k) => `${sigZh[k]} ${counts[k]}`).join('・')}</small></h2>
       <div class="grid g2">${posSorted.map((p, i) => posCard(p, d, i)).join('') || '<div class="card muted">無持倉資料</div>'}</div>
 
-      ${d.institutional?.length ? `<h2>台股三大法人買賣超 <small>近 ${d.institutional.length} 個交易日</small></h2>${instTable(d.institutional)}` : ''}
 
       <h2>市場總覽</h2>
       ${marketTable(d.markets || [])}

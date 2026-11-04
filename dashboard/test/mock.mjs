@@ -56,3 +56,30 @@ export function mockDaily(sym) {
   const start = sym.includes('VIX') ? 18 : sym === 'TWD=X' ? 31 : 100;
   return { symbol: sym, currency: 'USD', partial: false, bars: toBars(ds, returns(sym, N, vol), start, sym) };
 }
+
+/** 假的籌碼快取（--mock） */
+export function mockChips(dates) {
+  const r = rng('chips');
+  const days = {};
+  let fin = 3.2e11;
+  let sbl = 9e9;
+  let fut = -25000;
+  let maint = 168;
+  dates.forEach((d) => {
+    fin *= 1 + (r() - 0.45) * 0.02;
+    sbl *= 1 + (r() - 0.5) * 0.03;
+    fut += Math.round((r() - 0.5) * 6000);
+    maint += (r() - 0.5) * 3;
+    days[d] = {
+      finAmt: fin,
+      shortUnits: 300000,
+      maint: Number(maint.toFixed(2)),
+      mcap: 9e13 * (1 + (r() - 0.5) * 0.02),
+      sblShares: sbl,
+      sblValue: sbl * 85,
+      inst: { foreign: (r() - 0.5) * 6e10, trust: (r() - 0.5) * 1e10, dealer: (r() - 0.5) * 8e9, total: (r() - 0.5) * 7e10 },
+      fut: { long: 20000, short: 20000 - fut, net: fut },
+    };
+  });
+  return { days };
+}

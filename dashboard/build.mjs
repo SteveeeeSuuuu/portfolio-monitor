@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // 產生 dashboard 用的 data.json，並把網頁輸出到 dist/
 // 用法：node build.mjs [--mock] [--out dist]
-import { mkdir, writeFile, copyFile, readdir } from 'node:fs/promises';
+import { mkdir, writeFile, copyFile, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { yahooDaily, cnnFearGreed, twseInstitutional, yahooEarnings, sleep } from './lib/sources.mjs';
+import { yahooDaily, cnnFearGreed, yahooEarnings } from './lib/sources.mjs';
+import { updateChips, summarizeChips } from './lib/chips.mjs';
 import { analyze, DEFAULT_STRATEGIES, DECAY_THRESHOLD, DECAY_WINDOW } from './lib/strategies.mjs';
 import { sma, rsi, last } from './lib/indicators.mjs';
 import { usSentiment, twSentiment, semiSentiment, rating } from './lib/sentiment.mjs';
@@ -13,6 +14,7 @@ import { POSITIONS, MARKETS } from './config.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const MOCK = args.includes('--mock');
+const HISTORY = args.includes('--history') ? path.resolve(args[args.indexOf('--history') + 1]) : null;
 const OUT = path.resolve(args.includes('--out') ? args[args.indexOf('--out') + 1] : path.join(__dirname, 'dist'));
 
 const r2 = (x, d = 2) => (x === null || x === undefined || !Number.isFinite(x) ? null : Number(x.toFixed(d)));
@@ -179,9 +181,35 @@ async function main() {
     threshold: 80,
   };
 
+  // ---- 台股籌碼與市場槓桿 ----
+  let chipsHistory = { days: {} };
+  if (HISTORY) {
+    try {
+      chipsHistory = JSON.parse(await readFile(HISTORY, 'utf8'));
+      console.log(`讀取籌碼快取：${Object.keys(chipsHistory.days || {}).length} 天`);
+    } catch {
+      console.log('無籌碼快取，從頭抓取');
+    }
+  }
+  let chips = null;
+  const twBars = data['^TWII']?.bars || [];
+  if (MOCK) {
+    const { mockChips } = await import('./test/mock.mjs');
+    chipsHistory = mockChips(twBars.slice(-30).map((b) => b.date));
+  } else if (twBars.length) {
+    // 只用已收盤的交易日
+    const dates = twBars.map((b) => b.date).filter((d, i, arr) => !(data['^TWII'].partial && i === arr.length - 1));
+    const errs = await updateChips(chipsHistory, dates);
+    errs.forEach((e) => warnings.push(`籌碼：${e}`));
+  }
+  try {
+    chips = summarizeChips(chipsHistory, twBars.slice(-40));
+  } catch (e) {
+    warnings.push(`籌碼彙總失敗：${e.message}`);
+  }
+
   // ---- 選用來源 ----
   let fearGreed = null;
-  let institutional = null;
   let earnings = null;
   if (!MOCK) {
     try {
@@ -211,18 +239,6 @@ async function main() {
       warnings.push(`CNN Fear & Greed 取得失敗（改看自算分數）：${e.message}`);
     }
     try {
-      const twDates = (data['^TWII']?.bars || []).slice(-5).map((b) => b.date).reverse();
-      const rows = [];
-      for (const d of twDates) {
-        const r = await twseInstitutional(d);
-        if (r) rows.push(r);
-        await sleep(2500);
-      }
-      if (rows.length) institutional = rows.reverse();
-    } catch (e) {
-      warnings.push(`TWSE 三大法人取得失敗：${e.message}`);
-    }
-    try {
       const unders = [...new Set(POSITIONS.filter((p) => p.market === 'US').map((p) => p.underlyingSymbol))];
       const raw = await yahooEarnings(unders);
       const now = Date.now() / 1000;
@@ -245,7 +261,8 @@ async function main() {
     markets,
     positions,
     concentration,
-    institutional,
+    chips,
+    institutional: chips?.institutional?.length ? chips.institutional : null,
     earnings,
     warnings,
   };
@@ -259,6 +276,7 @@ async function main() {
   const siteDir = path.join(__dirname, 'site');
   for (const f of await readdir(siteDir)) await copyFile(path.join(siteDir, f), path.join(OUT, f));
   await writeFile(path.join(OUT, 'data.json'), JSON.stringify(out));
+  await writeFile(path.join(OUT, 'chips-history.json'), JSON.stringify(chipsHistory));
   console.log(`OK → ${OUT}/data.json  positions=${positions.length} markets=${markets.length}`);
   if (warnings.length) console.log('警告：\n- ' + warnings.join('\n- '));
 }
