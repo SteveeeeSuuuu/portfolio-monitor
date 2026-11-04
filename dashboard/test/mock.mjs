@@ -1,0 +1,58 @@
+// 本地測試用假資料（--mock）：可重現的隨機漫步，槓桿 ETF 由標的日報酬 ×2 產生
+import { POSITIONS } from '../config.mjs';
+
+function rng(seedStr) {
+  let h = 2166136261;
+  for (const ch of seedStr) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return () => {
+    h += 0x6d2b79f5;
+    let t = h;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function dates(n, end = '2026-11-03') {
+  const out = [];
+  const d = new Date(`${end}T00:00:00Z`);
+  while (out.length < n) {
+    const wd = d.getUTCDay();
+    if (wd !== 0 && wd !== 6) out.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() - 1);
+  }
+  return out.reverse();
+}
+
+function returns(sym, n, vol) {
+  const r = rng(sym);
+  return Array.from({ length: n }, () => {
+    const g = Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(2 * Math.PI * r());
+    return 0.0003 + vol * g;
+  });
+}
+
+function toBars(ds, rets, start, sym) {
+  const r = rng(sym + 'hl');
+  let c = start;
+  return ds.map((date, i) => {
+    const o = c;
+    c = c * (1 + rets[i]);
+    const hi = Math.max(o, c) * (1 + r() * 0.01);
+    const lo = Math.min(o, c) * (1 - r() * 0.01);
+    return { date, open: o, high: hi, low: lo, close: c, adjclose: c, volume: 1e6 };
+  });
+}
+
+const N = 1260;
+export function mockDaily(sym) {
+  const ds = dates(N);
+  const pos = POSITIONS.find((p) => p.symbol === sym);
+  if (pos) {
+    const ur = returns(pos.underlyingSymbol, N, 0.025);
+    return { symbol: sym, currency: pos.currency, partial: false, bars: toBars(ds, ur.map((x) => x * pos.leverage - 0.0001), 20, sym) };
+  }
+  const vol = sym.includes('VIX') ? 0.06 : sym === 'TLT' || sym === 'IEF' ? 0.006 : 0.012;
+  const start = sym.includes('VIX') ? 18 : sym === 'TWD=X' ? 31 : 100;
+  return { symbol: sym, currency: 'USD', partial: false, bars: toBars(ds, returns(sym, N, vol), start, sym) };
+}
