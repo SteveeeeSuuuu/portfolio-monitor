@@ -4,7 +4,7 @@
 import { mkdir, writeFile, copyFile, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { yahooDaily, cnnFearGreed, yahooEarnings } from './lib/sources.mjs';
+import { yahooDaily, nasdaqDaily, cnnFearGreed, yahooEarnings, sleep } from './lib/sources.mjs';
 import { updateChips, summarizeChips } from './lib/chips.mjs';
 import { analyze, DEFAULT_STRATEGIES, DECAY_THRESHOLD, DECAY_WINDOW } from './lib/strategies.mjs';
 import { sma, rsi, last } from './lib/indicators.mjs';
@@ -27,8 +27,9 @@ async function loadAll(symbols) {
     for (const s of symbols) out[s] = mockDaily(s);
     return out;
   }
-  // 小批次併發，避免被限流
+  // 小批次併發，避免被限流；Yahoo 失敗時，美股個股 / ETF 改用 Nasdaq
   const queue = [...symbols];
+  const usPlain = (s) => /^[A-Z]{1,5}$/.test(s);
   const worker = async () => {
     while (queue.length) {
       const s = queue.shift();
@@ -36,12 +37,24 @@ async function loadAll(symbols) {
         out[s] = await yahooDaily(s);
         if (!out[s].bars.length) throw new Error('no bars');
       } catch (e) {
-        warnings.push(`抓取 ${s} 失敗：${e.message}`);
         delete out[s];
+        if (usPlain(s)) {
+          try {
+            out[s] = await nasdaqDaily(s);
+            warnings.push(`${s}：Yahoo 失敗（${e.message}），改用 Nasdaq 資料（無還原股價）`);
+            continue;
+          } catch (e2) {
+            warnings.push(`抓取 ${s} 失敗：${e.message}；${e2.message}`);
+            continue;
+          }
+        }
+        warnings.push(`抓取 ${s} 失敗：${e.message}`);
       }
+      await sleep(300);
     }
   };
-  await Promise.all([worker(), worker(), worker(), worker()]);
+  await Promise.all([worker(), worker(), worker()]);
+  console.log(`價格資料：${Object.keys(out).length}/${symbols.length} 檔`);
   return out;
 }
 

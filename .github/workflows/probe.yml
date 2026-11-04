@@ -2,11 +2,6 @@ name: 資料來源連線診斷
 
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/stock-sentiment-dashboard-hkjgkf]
-    paths:
-      - 'dashboard/scripts/probe.mjs'
-      - '.github/workflows/probe.yml'
 
 jobs:
   probe:

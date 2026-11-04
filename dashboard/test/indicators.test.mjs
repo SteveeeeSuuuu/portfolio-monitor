@@ -185,3 +185,20 @@ test('籌碼追蹤表：5 / 20 日變化與累計、情境判斷', () => {
   assert.equal(scenario({ taiex: { c5: 1 }, margin: { c5: 0.2 } }).key, 'up_nolev');
   assert.equal(scenario({ taiex: { c5: -1 }, margin: { c5: -1 } }).key, 'down_mild');
 });
+
+import { parseNasdaqRows, parseYahooChart } from '../lib/sources.mjs';
+test('Nasdaq 歷史資料解析', () => {
+  const b = parseNasdaqRows([{ date: '11/03/2026', close: '$1,234.50', volume: '1,000', open: '$1,200.00', high: '$1,240.00', low: '$1,190.00' }, { date: '11/02/2026', close: '$1,200', volume: 'N/A', open: 'N/A', high: 'N/A', low: 'N/A' }]);
+  assert.equal(b.length, 2);
+  assert.equal(b[0].date, '2026-11-02');
+  assert.equal(b[1].close, 1234.5);
+  assert.equal(b[1].high, 1240);
+  assert.equal(b[0].open, 1200);
+});
+test('Yahoo chart 解析：去除 null、台北時區日期', () => {
+  const r = { meta: { gmtoffset: 28800, currency: 'TWD' }, timestamp: [1793667600, 1793754000], indicators: { quote: [{ open: [1, null], high: [2, null], low: [0.5, null], close: [1.5, null], volume: [10, null] }], adjclose: [{ adjclose: [1.4, null] }] } };
+  const p = parseYahooChart('X', r, 0);
+  assert.equal(p.bars.length, 1);
+  assert.equal(p.bars[0].adjclose, 1.4);
+  assert.match(p.bars[0].date, /^\d{4}-\d{2}-\d{2}$/);
+});
