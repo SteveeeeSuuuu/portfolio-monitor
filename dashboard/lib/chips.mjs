@@ -157,7 +157,8 @@ async function fetchTaifex(startDate, endDate) {
   const buf = await res.arrayBuffer();
   let text = new TextDecoder('big5').decode(buf);
   if (!text.includes('日期')) text = new TextDecoder('utf-8').decode(buf);
-  if (/<html/i.test(text)) throw new Error('TAIFEX 回傳 HTML（查無資料或被擋）');
+  // 查無資料或查詢被拒時，期交所回 HTML 頁而非 CSV
+  if (text.trimStart().startsWith('<') || text.includes('DateTime error')) return {};
   return parseTaifexCsv(text);
 }
 
@@ -234,7 +235,7 @@ export async function updateChips(history, tradingDates, log = console.log) {
         }
       }
       if (rec.sblShares === undefined) {
-        const j = await twse(`https://www.twse.com.tw/rwd/zh/marginTrading/TWT93U?date=${ymd(d)}&response=json`);
+        const j = await twse(`https://www.twse.com.tw/rwd/zh/marginTrading/TWT93U?date=${ymd(d)}&selectType=ALL&response=json`);
         if (isOk(j)) {
           const s = parseSbl(j);
           if (s.size > 100) {
