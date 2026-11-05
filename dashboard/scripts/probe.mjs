@@ -32,3 +32,16 @@ await t('twse STOCK_DAY 0050', 'https://www.twse.com.tw/rwd/zh/afterTrading/STOC
 await t('twse TAIEX hist', 'https://www.twse.com.tw/rwd/zh/TAIEX/MI_5MINS_HIST?response=json', { headers: { 'User-Agent': UA } });
 await t('taifex', 'https://www.taifex.com.tw/cht/3/futContractsDateDown', { method: 'POST', headers: { 'User-Agent': UA, 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'queryStartDate=2026/10/20&queryEndDate=2026/11/03&commodityId=TXF' });
 await t('cnn fg', 'https://production.dataviz.cnn.io/index/fearandgreed/graphdata/2026-10-01', { headers: { 'User-Agent': UA, Referer: 'https://www.cnn.com/', Origin: 'https://www.cnn.com' } });
+
+// 確認 GitHub Pages 網頁與資料
+const site = 'https://steveeeesuuuu.github.io/portfolio-monitor/';
+const page = await t('pages index.html', site);
+console.log('  title:', page.body?.match(/<title>([^<]*)<\/title>/)?.[1], ' app.js:', page.body?.includes('app.js'), ' chart.js:', page.body?.includes('chart.umd'));
+const dj = await t('pages data.json', site + 'data.json');
+try {
+  const d = JSON.parse(dj.body);
+  console.log('  generatedAt', d.generatedAt, 'mock', d.mock, 'warnings', d.warnings.length, 'us', d.sentiment.us?.score, 'tw', d.sentiment.tw?.score, 'semi', d.sentiment.semi?.score, 'positions', d.positions.length, 'scenario', d.chips?.scenario?.key);
+} catch (e) {
+  console.log('  data.json 解析失敗', e.message);
+}
+await t('pages app.js', site + 'app.js');
