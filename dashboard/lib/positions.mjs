@@ -39,6 +39,10 @@ export function normalizePositions(raw) {
         warnings.push(`${ticker}：槓桿型需要填標的代號，已略過`);
         continue;
       }
+      if (underlying === ticker) {
+        warnings.push(`${ticker}：標的不能是自己（例：SOXL 的標的填 SOXX、倍數 3），已略過`);
+        continue;
+      }
       if (!Number.isFinite(leverage) || leverage === 0 || Math.abs(leverage) > 5) {
         warnings.push(`${ticker}：槓桿倍數「${p?.leverage}」不正確（-5 ~ 5，不可為 0），已略過`);
         continue;

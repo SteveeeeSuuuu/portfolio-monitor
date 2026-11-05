@@ -520,6 +520,7 @@
       seen.add(r.market + r.ticker);
       if (r.type === 'leveraged') {
         if (!TICKER_RE.test(r.underlying || '')) errs.push(`${n}：槓桿 ETF 需填標的代號`);
+        else if (r.underlying === r.ticker) errs.push(`${n}：標的要填追蹤的股票或指數 ETF，不能是 ${r.ticker} 自己（例：SOXL → SOXX、倍數 3）`);
         if (!Number.isFinite(r.leverage) || r.leverage === 0 || Math.abs(r.leverage) > 5) errs.push(`${n}：倍數需介於 -5 ~ 5 且不為 0`);
       }
     });

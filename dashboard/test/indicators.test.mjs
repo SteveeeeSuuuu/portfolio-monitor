@@ -224,13 +224,15 @@ test('持倉設定：驗證、代號轉換、最多 10 檔', () => {
       { ticker: 'X1', market: 'US', type: 'leveraged', leverage: 2 },
       { ticker: 'X2', market: 'US', type: 'leveraged', underlying: 'Y', leverage: 0 },
       { ticker: 'AAPL', market: 'US', type: 'stock' },
+      { ticker: 'SOXL', market: 'US', type: 'leveraged', underlying: 'SOXL', leverage: 3 },
     ],
   });
   assert.deepEqual(positions.map((p) => p.symbol), ['00631L.TW', 'AAPL', '6488.TWO', 'SQQQ']);
   assert.equal(positions[0].underlyingSymbol, '0050.TW');
   assert.equal(positions[1].underlyingSymbol, null);
   assert.equal(positions[3].leverage, -3);
-  assert.equal(warnings.length, 4);
+  assert.equal(warnings.length, 5);
+  assert.match(warnings.at(-1), /標的不能是自己/);
   const many = normalizePositions(Array.from({ length: 12 }, (_, i) => ({ ticker: `T${i}`, market: 'US', type: 'stock' })));
   assert.equal(many.positions.length, 10);
   assert.match(many.warnings[0], /最多 10 檔/);
