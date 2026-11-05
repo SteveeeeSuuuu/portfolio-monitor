@@ -202,16 +202,19 @@
   }
   function posCard(p, d, idx) {
     const q = p.quote, uq = p.underlyingQuote;
-    const er = d.earnings?.[p.underlyingSymbol];
+    const er = d.earnings?.[p.underlyingSymbol || p.symbol];
+    const erName = p.underlying || p.ticker;
+    const mkt = { US: '美股', TW: '上市', TWO: '上櫃' }[p.market] || p.market;
+    const typ = p.type === 'leveraged' ? `${esc(p.underlying)} ×${p.leverage}` : p.type === 'etf' ? 'ETF' : '個股';
     const alerts = [...p.alerts.map((a) => `<li>${esc(a)}</li>`)];
-    if (er && er.daysLeft >= 0 && er.daysLeft <= 3) alerts.push(`<li>${esc(p.underlying)} 財報剩 ${er.daysLeft} 天</li>`);
+    if (er && er.daysLeft >= 0 && er.daysLeft <= 3) alerts.push(`<li>${esc(erName)} 財報剩 ${er.daysLeft} 天</li>`);
     if (p.partial) alerts.push('<li class="info">盤中資料，尚未收盤</li>');
     const ccy = p.currency === 'TWD' ? 'NT$' : '$';
     const strats = p.results.map((r) => `<div class="strat"><div class="name">${esc(stratZh[r.strategy] || r.strategy)}</div><div>${badge(r.signal)} <span class="ink2">${esc(trendZh[r.trend] || '')}</span>　${esc(r.reason)}</div><div class="ind">${esc(indText(r))}${isNum(r.strength) ? `・強度 ${r.strength}` : ''}</div></div>`).join('');
     const hasRsi = p.results.some((r) => r.strategy === 'rsi-momentum');
     return `<div class="card">
       <div class="pos-head">
-        <div><div class="t">${esc(p.ticker)} ${badge(p.summary)}</div><div class="u">${esc(p.underlying)} ×${p.leverage}・${esc(p.market === 'TW' ? '台股' : '美股')}・${esc(q.date)}</div></div>
+        <div><div class="t">${esc(p.ticker)} ${badge(p.summary)}</div><div class="u">${typ}・${esc(mkt)}・${esc(q.date)}</div></div>
         <div class="price"><b class="num">${ccy}${fmt(q.close, 2)}</b><div>${pct(q.chg1d)}</div></div>
       </div>
       ${alerts.length ? `<ul class="alerts">${alerts.join('')}</ul>` : ''}
@@ -219,11 +222,11 @@
       <div class="chart-box"><canvas id="pc${idx}" aria-label="${esc(p.ticker)} 近 120 日收盤與均線"></canvas></div>
       <div class="strats">${strats}
         ${!hasRsi ? `<div class="strat"><div class="name">RSI(14) 參考</div><div class="num">${fmt(p.rsiInfo, 1)} <span class="muted">（槓桿型預設不納入投票）</span></div></div>` : ''}
-        <div class="strat"><div class="name">區間表現</div><div>5 日 ${pct(q.chg5d)}・20 日 ${pct(q.chg20d)}・距 52 週高 ${pct(q.fromHigh52w)}</div><div class="ind">標的 ${esc(p.underlying)}：今日 ${pct(uq.chg1d)}・20 日 ${pct(uq.chg20d)}</div></div>
-        ${er ? `<div class="strat"><div class="name">下次財報</div><div class="num">${esc(p.underlying)} ${esc(er.date)}（${er.daysLeft >= 0 ? `剩 ${er.daysLeft} 天` : '已公布'}${er.estimated ? '，預估日' : ''}）</div></div>` : ''}
+        <div class="strat"><div class="name">區間表現</div><div>5 日 ${pct(q.chg5d)}・20 日 ${pct(q.chg20d)}・距 52 週高 ${pct(q.fromHigh52w)}</div>${uq ? `<div class="ind">標的 ${esc(p.underlying)}：今日 ${pct(uq.chg1d)}・20 日 ${pct(uq.chg20d)}</div>` : ''}</div>
+        ${er ? `<div class="strat"><div class="name">下次財報</div><div class="num">${esc(erName)} ${esc(er.date)}（${er.daysLeft >= 0 ? `剩 ${er.daysLeft} 天` : '已公布'}${er.estimated ? '，預估日' : ''}）</div></div>` : ''}
       </div>
-      <details style="margin-top:6px"><summary class="ink2" style="cursor:pointer;font-size:13px">耗損明細（多區間）</summary>${decayTable(p.results.find((r) => r.strategy === 'decay-monitor'), p.leverage)}</details>
-      <div class="note">${esc(p.note)}</div>
+      ${p.type === 'leveraged' ? `<details style="margin-top:6px"><summary class="ink2" style="cursor:pointer;font-size:13px">耗損明細（多區間）</summary>${decayTable(p.results.find((r) => r.strategy === 'decay-monitor'), p.leverage)}</details>` : ''}
+      ${p.note ? `<div class="note">${esc(p.note)}</div>` : ''}
     </div>`;
   }
 
@@ -378,6 +381,251 @@
       compTab = k; store.set('compTab', k); render(DATA);
     });
   }
+
+  // ---------- GitHub：更新按鈕 / 持倉設定 ----------
+  const TOKEN_KEY = 'ghToken';
+  const opStatus = (html, kind = '') => {
+    const el = $('#opStatus');
+    el.className = `banner ${kind}`;
+    el.hidden = !html;
+    el.innerHTML = html;
+  };
+  async function gh(path, opts = {}) {
+    const tok = store.get(TOKEN_KEY);
+    if (!tok) throw Object.assign(new Error('尚未設定 GitHub 權杖'), { code: 'no_token' });
+    const res = await fetch(`https://api.github.com${path}`, {
+      ...opts,
+      cache: 'no-store',
+      headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', Authorization: `Bearer ${tok}`, ...(opts.body ? { 'Content-Type': 'application/json' } : {}) },
+    });
+    if (res.status === 401) throw new Error('權杖無效或已過期，請重新設定');
+    if (res.status === 403 || res.status === 404) throw new Error(`權杖權限不足（需要此 repo 的 Actions 與 Contents 讀寫權限）［HTTP ${res.status}］`);
+    if (res.status === 409) throw new Error('檔案剛被其他地方修改，請重新開啟設定再存一次');
+    if (!res.ok) throw new Error(`GitHub API 錯誤 HTTP ${res.status}`);
+    return res.status === 204 ? null : res.json();
+  }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const b64encode = (str) => { let bin = ''; new TextEncoder().encode(str).forEach((b) => (bin += String.fromCharCode(b))); return btoa(bin); };
+  const b64decode = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, '')), (c) => c.charCodeAt(0)));
+
+  let busy = false;
+  function setBusy(v) {
+    busy = v;
+    $('#refreshBtn').disabled = v;
+    $('#posSave') && ($('#posSave').disabled = v);
+  }
+
+  /** 等待 t0 之後建立的 workflow run 完成，再等 Pages 上的 data.json 換新 */
+  async function waitForRebuild(event, t0, label) {
+    const g = DATA.github;
+    const oldGen = DATA.generatedAt;
+    let run = null;
+    const start = Date.now();
+    while (Date.now() - start < 20 * 60e3) {
+      const j = await gh(`/repos/${g.repo}/actions/workflows/${g.workflow}/runs?event=${event}&branch=${encodeURIComponent(g.branch)}&per_page=5`);
+      run = (j.workflow_runs || []).find((r) => new Date(r.created_at).getTime() >= t0 - 30e3) || run;
+      const sec = Math.round((Date.now() - start) / 1000);
+      if (run && run.status === 'completed') break;
+      opStatus(`${label}：${!run ? '等待 GitHub 建立工作' : run.status === 'in_progress' ? '抓資料、計算中' : '排隊中'}…（${sec} 秒）<span class="muted">　通常 1–3 分鐘</span>`, 'warn');
+      await sleep(8000);
+    }
+    if (!run || run.status !== 'completed') throw new Error('等候逾時，請稍後重新整理頁面');
+    if (run.conclusion !== 'success') {
+      opStatus(`${label}失敗（${esc(run.conclusion)}）。<a href="${esc(run.html_url)}" target="_blank" rel="noopener">查看執行紀錄 ↗</a>`, 'crit');
+      return false;
+    }
+    // Pages 部署需要一點時間
+    for (let i = 0; i < 40; i++) {
+      opStatus(`${label}：計算完成，等待網頁部署…`, 'warn');
+      try {
+        const d = await (await fetch(`data.json?t=${Date.now()}`, { cache: 'no-store' })).json();
+        if (d.generatedAt !== oldGen) {
+          DATA = d;
+          render(d);
+          opStatus(`已更新（${new Date(d.generatedAt).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false })}）`, '');
+          setTimeout(() => opStatus(''), 8000);
+          return true;
+        }
+      } catch { /* 重試 */ }
+      await sleep(6000);
+    }
+    opStatus('計算已完成，但網頁尚未部署完成，請稍後重新整理。', 'warn');
+    return false;
+  }
+
+  async function refreshNow() {
+    if (busy) return;
+    if (!DATA?.github) return opStatus('這份資料不是由 GitHub Actions 產生（本機預覽），無法線上更新。', 'warn');
+    if (!store.get(TOKEN_KEY)) return openSettings(true);
+    setBusy(true);
+    const t0 = Date.now();
+    try {
+      opStatus('送出更新請求…', 'warn');
+      await gh(`/repos/${DATA.github.repo}/actions/workflows/${DATA.github.workflow}/dispatches`, { method: 'POST', body: JSON.stringify({ ref: DATA.github.branch }) });
+      await waitForRebuild('workflow_dispatch', t0, '更新中');
+    } catch (e) {
+      opStatus(`更新失敗：${esc(e.message)}`, 'crit');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // ----- 持倉設定 -----
+  const MARKET_OPTS = [['US', '美股'], ['TW', '台股上市'], ['TWO', '台股上櫃']];
+  const TYPE_OPTS = [['leveraged', '槓桿 ETF'], ['stock', '個股'], ['etf', 'ETF']];
+  const TICKER_RE = /^[A-Z0-9][A-Z0-9.\-]{0,11}$/;
+  let editRows = [];
+  let editSha = null;
+
+  function rowHtml(r, i) {
+    const opt = (list, v) => list.map(([k, l]) => `<option value="${k}"${k === v ? ' selected' : ''}>${l}</option>`).join('');
+    const lev = r.type === 'leveraged';
+    return `<div class="pos-row" data-i="${i}">
+      <div class="pr-num">${i + 1}</div>
+      <label>代號<input data-f="ticker" value="${esc(r.ticker)}" placeholder="NVDX" autocapitalize="characters" spellcheck="false"></label>
+      <label>市場<select data-f="market">${opt(MARKET_OPTS, r.market)}</select></label>
+      <label>類型<select data-f="type">${opt(TYPE_OPTS, r.type)}</select></label>
+      <label${lev ? '' : ' class="off"'}>標的<input data-f="underlying" value="${esc(r.underlying ?? '')}" placeholder="NVDA" ${lev ? '' : 'disabled'} autocapitalize="characters" spellcheck="false"></label>
+      <label${lev ? '' : ' class="off"'}>倍數<input data-f="leverage" type="number" step="0.5" min="-5" max="5" value="${lev ? esc(r.leverage ?? 2) : ''}" ${lev ? '' : 'disabled'}></label>
+      <label class="chk"><input data-f="semi" type="checkbox"${r.semi ? ' checked' : ''}>半導體 / AI</label>
+      <label class="wide">備註<input data-f="note" value="${esc(r.note ?? '')}" maxlength="200" placeholder="（選填）"></label>
+      <button type="button" class="chip del" data-del="${i}" aria-label="刪除第 ${i + 1} 筆">刪除</button>
+    </div>`;
+  }
+  function drawRows() {
+    const max = DATA?.maxPositions || 10;
+    $('#posRows').innerHTML = editRows.map(rowHtml).join('') || '<div class="muted" style="padding:12px 0">目前沒有持倉，按「新增一檔」開始。</div>';
+    $('#posAdd').disabled = editRows.length >= max;
+    $('#posCount').textContent = `${editRows.length} / ${max} 檔`;
+  }
+  function readRows() {
+    $('#posRows').querySelectorAll('.pos-row').forEach((el) => {
+      const r = editRows[Number(el.dataset.i)];
+      el.querySelectorAll('[data-f]').forEach((inp) => {
+        const f = inp.dataset.f;
+        if (f === 'semi') r.semi = inp.checked;
+        else if (f === 'leverage') r.leverage = inp.value === '' ? null : Number(inp.value);
+        else if (f === 'ticker' || f === 'underlying') r[f] = inp.value.trim().toUpperCase();
+        else r[f] = inp.value;
+      });
+    });
+  }
+  function validate(rows) {
+    const errs = [];
+    const seen = new Set();
+    rows.forEach((r, i) => {
+      const n = `第 ${i + 1} 筆`;
+      if (!TICKER_RE.test(r.ticker)) errs.push(`${n}：代號只能是英數字（例：NVDX、00631L）`);
+      if (seen.has(r.market + r.ticker)) errs.push(`${n}：${r.ticker} 重複`);
+      seen.add(r.market + r.ticker);
+      if (r.type === 'leveraged') {
+        if (!TICKER_RE.test(r.underlying || '')) errs.push(`${n}：槓桿 ETF 需填標的代號`);
+        if (!Number.isFinite(r.leverage) || r.leverage === 0 || Math.abs(r.leverage) > 5) errs.push(`${n}：倍數需介於 -5 ~ 5 且不為 0`);
+      }
+    });
+    return errs;
+  }
+
+  async function openSettings(tokenFirst = false) {
+    const dlg = $('#posDialog');
+    editRows = (DATA?.positionsConfig || []).map((r) => ({ ...r }));
+    editSha = null;
+    $('#posErr').textContent = '';
+    $('#tokenInput').value = '';
+    $('#tokenState').textContent = store.get(TOKEN_KEY) ? '已設定（只存在這台裝置的瀏覽器）' : '尚未設定';
+    $('#posSrc').textContent = '目前顯示的是網頁上的持倉資料。';
+    drawRows();
+    dlg.showModal();
+    if (tokenFirst || !store.get(TOKEN_KEY)) {
+      $('#tokenBox').open = true;
+      $('#tokenInput').focus();
+    }
+    // 有權杖時讀 GitHub 上最新的設定（可能比網頁上的新）
+    if (store.get(TOKEN_KEY) && DATA?.github) {
+      try {
+        const g = DATA.github;
+        const f = await gh(`/repos/${g.repo}/contents/${g.positionsPath}?ref=${encodeURIComponent(g.branch)}`);
+        editSha = f.sha;
+        const j = JSON.parse(b64decode(f.content));
+        editRows = (j.positions || []).map((r) => ({ ticker: '', market: 'US', type: 'stock', underlying: null, leverage: null, semi: false, note: '', ...r }));
+        $('#posSrc').textContent = '已讀取 GitHub 上最新的持倉設定。';
+        drawRows();
+      } catch (e) {
+        $('#posSrc').textContent = `讀取 GitHub 設定失敗：${e.message}`;
+      }
+    }
+  }
+
+  async function savePositions() {
+    readRows();
+    const errs = validate(editRows);
+    if (errs.length) return ($('#posErr').innerHTML = errs.map(esc).join('<br>'));
+    if (!DATA?.github) return ($('#posErr').textContent = '本機預覽無法儲存到 GitHub。');
+    if (!store.get(TOKEN_KEY)) {
+      $('#tokenBox').open = true;
+      return ($('#posErr').textContent = '請先在下方設定 GitHub 權杖。');
+    }
+    const g = DATA.github;
+    const clean = editRows.map((r) => {
+      const o = { ticker: r.ticker, market: r.market, type: r.type };
+      if (r.type === 'leveraged') Object.assign(o, { underlying: r.underlying, leverage: r.leverage });
+      o.semi = Boolean(r.semi);
+      if (r.note?.trim()) o.note = r.note.trim();
+      return o;
+    });
+    setBusy(true);
+    const t0 = Date.now();
+    try {
+      if (!editSha) editSha = (await gh(`/repos/${g.repo}/contents/${g.positionsPath}?ref=${encodeURIComponent(g.branch)}`)).sha;
+      await gh(`/repos/${g.repo}/contents/${g.positionsPath}`, {
+        method: 'PUT',
+        body: JSON.stringify({ message: `持倉設定：${clean.map((r) => r.ticker).join(', ') || '（清空）'}`, content: b64encode(JSON.stringify({ positions: clean }, null, 2) + '\n'), sha: editSha, branch: g.branch }),
+      });
+      $('#posDialog').close();
+      await waitForRebuild('push', t0, '持倉已儲存，重新計算中');
+    } catch (e) {
+      $('#posErr').textContent = `儲存失敗：${e.message}`;
+      opStatus(`儲存失敗：${esc(e.message)}`, 'crit');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  $('#refreshBtn').addEventListener('click', refreshNow);
+  $('#posBtn').addEventListener('click', () => openSettings(false));
+  $('#posAdd').addEventListener('click', () => {
+    readRows();
+    if (editRows.length < (DATA?.maxPositions || 10)) editRows.push({ ticker: '', market: 'US', type: 'stock', underlying: null, leverage: null, semi: false, note: '' });
+    drawRows();
+    $('#posRows .pos-row:last-child input')?.focus();
+  });
+  $('#posRows').addEventListener('click', (e) => {
+    const i = e.target.dataset?.del;
+    if (i === undefined) return;
+    readRows();
+    editRows.splice(Number(i), 1);
+    drawRows();
+  });
+  $('#posRows').addEventListener('change', (e) => {
+    if (e.target.dataset?.f !== 'type') return;
+    readRows();
+    const r = editRows[Number(e.target.closest('.pos-row').dataset.i)];
+    if (r.type === 'leveraged' && !r.leverage) r.leverage = 2;
+    drawRows();
+  });
+  $('#posSave').addEventListener('click', savePositions);
+  $('#posCancel').addEventListener('click', () => $('#posDialog').close());
+  $('#tokenSave').addEventListener('click', () => {
+    const v = $('#tokenInput').value.trim();
+    if (!/^(github_pat_|ghp_)[A-Za-z0-9_]{20,}$/.test(v)) return ($('#tokenState').textContent = '格式不像 GitHub 權杖（應以 github_pat_ 開頭）');
+    store.set(TOKEN_KEY, v);
+    $('#tokenInput').value = '';
+    $('#tokenState').textContent = store.get(TOKEN_KEY) ? '已儲存（只存在這台裝置的瀏覽器）' : '瀏覽器不允許儲存（可能是無痕模式）';
+  });
+  $('#tokenClear').addEventListener('click', () => {
+    try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
+    $('#tokenState').textContent = '已清除';
+  });
 
   fetch(`data.json?t=${Date.now()}`, { cache: 'no-store' })
     .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })

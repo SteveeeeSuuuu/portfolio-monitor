@@ -211,3 +211,27 @@ test('財報倒數天數（秒為單位）', () => {
   assert.equal(e.NVDA.date, '2026-11-17');
   assert.equal(e.SNDK, undefined);
 });
+
+import { normalizePositions } from '../lib/positions.mjs';
+test('持倉設定：驗證、代號轉換、最多 10 檔', () => {
+  const { positions, warnings } = normalizePositions({
+    positions: [
+      { ticker: '00631l', market: 'TW', type: 'leveraged', underlying: '0050', leverage: 2, semi: true },
+      { ticker: 'AAPL', market: 'US', type: 'stock' },
+      { ticker: '6488', market: 'TWO', type: 'stock' },
+      { ticker: 'BAD TICKER', market: 'US', type: 'stock' },
+      { ticker: 'SQQQ', market: 'US', type: 'leveraged', underlying: 'QQQ', leverage: -3 },
+      { ticker: 'X1', market: 'US', type: 'leveraged', leverage: 2 },
+      { ticker: 'X2', market: 'US', type: 'leveraged', underlying: 'Y', leverage: 0 },
+      { ticker: 'AAPL', market: 'US', type: 'stock' },
+    ],
+  });
+  assert.deepEqual(positions.map((p) => p.symbol), ['00631L.TW', 'AAPL', '6488.TWO', 'SQQQ']);
+  assert.equal(positions[0].underlyingSymbol, '0050.TW');
+  assert.equal(positions[1].underlyingSymbol, null);
+  assert.equal(positions[3].leverage, -3);
+  assert.equal(warnings.length, 4);
+  const many = normalizePositions(Array.from({ length: 12 }, (_, i) => ({ ticker: `T${i}`, market: 'US', type: 'stock' })));
+  assert.equal(many.positions.length, 10);
+  assert.match(many.warnings[0], /最多 10 檔/);
+});

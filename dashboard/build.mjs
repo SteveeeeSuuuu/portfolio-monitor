@@ -9,11 +9,13 @@ import { updateChips, summarizeChips } from './lib/chips.mjs';
 import { analyze, DEFAULT_STRATEGIES, DECAY_THRESHOLD, DECAY_WINDOW } from './lib/strategies.mjs';
 import { sma, rsi, last } from './lib/indicators.mjs';
 import { usSentiment, twSentiment, semiSentiment, rating } from './lib/sentiment.mjs';
-import { POSITIONS, MARKETS } from './config.mjs';
+import { MARKETS } from './config.mjs';
+import { normalizePositions, MAX_POSITIONS } from './lib/positions.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const MOCK = args.includes('--mock');
+const POS_FILE = args.includes('--positions') ? path.resolve(args[args.indexOf('--positions') + 1]) : null;
 const HISTORY = args.includes('--history') ? path.resolve(args[args.indexOf('--history') + 1]) : null;
 const OUT = path.resolve(args.includes('--out') ? args[args.indexOf('--out') + 1] : path.join(__dirname, 'dist'));
 
@@ -107,7 +109,16 @@ function packSentiment(res, partial = false, keepDays = 260) {
 }
 
 async function main() {
-  const posSymbols = POSITIONS.flatMap((p) => [p.symbol, p.underlyingSymbol]);
+  // ---- 持倉清單（positions.json，網頁可編輯，最多 10 檔） ----
+  let POSITIONS = [];
+  try {
+    const norm = normalizePositions(JSON.parse(await readFile(POS_FILE || path.join(__dirname, 'positions.json'), 'utf8')));
+    POSITIONS = norm.positions;
+    norm.warnings.forEach((w) => warnings.push(`持倉設定：${w}`));
+  } catch (e) {
+    warnings.push(`持倉設定讀取失敗：${e.message}`);
+  }
+  const posSymbols = POSITIONS.flatMap((p) => [p.symbol, p.underlyingSymbol]).filter(Boolean);
   const marketSymbols = MARKETS.map((m) => m.symbol);
   const extra = ['SPY', 'TLT', 'HYG', 'IEF', 'RSP', '^VIX3M'];
   const symbols = [...new Set([...posSymbols, ...marketSymbols, ...extra])];
@@ -142,15 +153,23 @@ async function main() {
   const positions = [];
   for (const p of POSITIONS) {
     const d = data[p.symbol];
-    const u = data[p.underlyingSymbol];
-    if (!d || !u) {
-      warnings.push(`${p.ticker}：價格或標的資料缺漏，略過分析`);
+    const u = p.underlyingSymbol ? data[p.underlyingSymbol] : null;
+    if (!d) {
+      warnings.push(`${p.ticker}（${p.symbol}）：抓不到價格資料，請確認代號與市場是否正確`);
+      continue;
+    }
+    if (p.type === 'leveraged' && !u) {
+      warnings.push(`${p.ticker}：抓不到標的 ${p.underlyingSymbol} 的資料，略過分析`);
+      continue;
+    }
+    if (d.bars.length < 30) {
+      warnings.push(`${p.ticker}：歷史資料只有 ${d.bars.length} 天，不足以計算指標`);
       continue;
     }
     const ohlcv = d.bars.map(({ date, open, high, low, close, volume }) => ({ date, open, high, low, close, volume }));
     // 耗損用還原股價（含配息），避免除息造成誤判
     const adjOhlcv = d.bars.map((b) => ({ date: b.date, close: b.adjclose }));
-    const adjUnder = u.bars.map((b) => ({ date: b.date, close: b.adjclose }));
+    const adjUnder = u ? u.bars.map((b) => ({ date: b.date, close: b.adjclose })) : [];
     const input = { ticker: p.ticker, market: p.market, type: p.type, ohlcv, decayOhlcv: adjOhlcv, underlyingOhlcv: adjUnder, position: { ...p, strategies: null } };
     const res = analyze(input);
     const closes = ohlcv.map((b) => b.close);
@@ -174,7 +193,7 @@ async function main() {
       rsiInfo: r2(last(rsi(closes, 14)), 1),
       alerts,
       quote: { ...ch, spark: undefined, sparkDates: undefined },
-      underlyingQuote: (({ date, close, chg1d, chg5d, chg20d }) => ({ date, close, chg1d, chg5d, chg20d }))(changes(u.bars)),
+      underlyingQuote: u ? (({ date, close, chg1d, chg5d, chg20d }) => ({ date, close, chg1d, chg5d, chg20d }))(changes(u.bars)) : null,
       chart: {
         dates: ohlcv.slice(-k).map((b) => b.date),
         close: closes.slice(-k).map((x) => r2(x, 4)),
@@ -186,7 +205,7 @@ async function main() {
 
   // ---- 集中度（positions.md）：無持股數，以檔數估算 ----
   const lev = positions.filter((p) => p.type === 'leveraged');
-  const semiCount = lev.filter((p) => p.sector === 'semi').length;
+  const semiCount = lev.filter((p) => p.semi).length;
   const concentration = {
     method: '檔數（未提供持股數，無法以市值計算）',
     semiCount,
@@ -253,7 +272,7 @@ async function main() {
       warnings.push(`CNN Fear & Greed 取得失敗（改看自算分數）：${e.message}`);
     }
     try {
-      const unders = [...new Set(POSITIONS.filter((p) => p.market === 'US').map((p) => p.underlyingSymbol))];
+      const unders = [...new Set(POSITIONS.filter((p) => p.market === 'US').map((p) => p.underlyingSymbol || p.symbol))];
       const raw = await yahooEarnings(unders);
       earnings = earningsDays(raw, Date.now() / 1000);
     } catch (e) {
@@ -264,6 +283,10 @@ async function main() {
   const out = {
     generatedAt: new Date().toISOString(),
     mock: MOCK,
+    // 網頁上的「更新」與「持倉設定」需要知道 repo / 分支
+    github: process.env.GITHUB_REPOSITORY ? { repo: process.env.GITHUB_REPOSITORY, branch: process.env.GITHUB_REF_NAME, workflow: 'sentiment-dashboard.yml', positionsPath: 'dashboard/positions.json' } : null,
+    positionsConfig: POSITIONS.map(({ ticker, market, type, underlying, leverage, semi, note }) => ({ ticker, market, type, underlying, leverage, semi, note })),
+    maxPositions: MAX_POSITIONS,
     settings: { decayThreshold: DECAY_THRESHOLD, decayWindow: DECAY_WINDOW, defaultStrategies: DEFAULT_STRATEGIES },
     sentiment,
     fearGreed,

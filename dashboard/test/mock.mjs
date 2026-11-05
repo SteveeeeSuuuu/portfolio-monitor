@@ -1,5 +1,8 @@
 // 本地測試用假資料（--mock）：可重現的隨機漫步，槓桿 ETF 由標的日報酬 ×2 產生
-import { POSITIONS } from '../config.mjs';
+import { readFileSync } from 'node:fs';
+import { normalizePositions } from '../lib/positions.mjs';
+
+const POSITIONS = normalizePositions(JSON.parse(readFileSync(new URL('../positions.json', import.meta.url), 'utf8'))).positions;
 
 function rng(seedStr) {
   let h = 2166136261;
@@ -47,8 +50,8 @@ function toBars(ds, rets, start, sym) {
 const N = 1260;
 export function mockDaily(sym) {
   const ds = dates(N);
-  const pos = POSITIONS.find((p) => p.symbol === sym);
-  if (pos) {
+  const pos = POSITIONS.find((p) => p.symbol === sym) || (/^(AAPL|6488\.TWO|SPY|QQQ)$/.test(sym) ? null : undefined);
+  if (pos && pos.underlyingSymbol) {
     const ur = returns(pos.underlyingSymbol, N, 0.025);
     return { symbol: sym, currency: pos.currency, partial: false, bars: toBars(ds, ur.map((x) => x * pos.leverage - 0.0001), 20, sym) };
   }

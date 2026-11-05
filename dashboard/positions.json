@@ -1,0 +1,67 @@
+{
+  "positions": [
+    {
+      "ticker": "00631L",
+      "market": "TW",
+      "type": "leveraged",
+      "underlying": "0050",
+      "leverage": 2,
+      "semi": true,
+      "note": "台灣 50 正 2，台股大盤指數型，波動相對小"
+    },
+    {
+      "ticker": "TSLL",
+      "market": "US",
+      "type": "leveraged",
+      "underlying": "TSLA",
+      "leverage": 2,
+      "semi": false,
+      "note": "Elon Musk 政治因素影響走勢，波動與大盤相關性低"
+    },
+    {
+      "ticker": "AMDL",
+      "market": "US",
+      "type": "leveraged",
+      "underlying": "AMD",
+      "leverage": 2,
+      "semi": true,
+      "note": "AMD，CPU + GPU，財報節奏需關注"
+    },
+    {
+      "ticker": "MVLL",
+      "market": "US",
+      "type": "leveraged",
+      "underlying": "MRVL",
+      "leverage": 2,
+      "semi": true,
+      "note": "Marvell，AI 網路晶片，基本面穩但跟隨 NVDA 走勢"
+    },
+    {
+      "ticker": "MUU",
+      "market": "US",
+      "type": "leveraged",
+      "underlying": "MU",
+      "leverage": 2,
+      "semi": true,
+      "note": "記憶體週期股，財報前後波動大，HBM 需求強但 NAND 供過於求"
+    },
+    {
+      "ticker": "NVDX",
+      "market": "US",
+      "type": "leveraged",
+      "underlying": "NVDA",
+      "leverage": 2,
+      "semi": true,
+      "note": "AI 基建需求明確，注意輝達財報是否不如預期引發板塊輪動"
+    },
+    {
+      "ticker": "SNXX",
+      "market": "US",
+      "type": "leveraged",
+      "underlying": "SNDK",
+      "leverage": 2,
+      "semi": true,
+      "note": "SanDisk 剛從 WD 分拆，流動性和價格發現尚未穩定"
+    }
+  ]
+}
