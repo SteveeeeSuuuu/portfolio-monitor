@@ -237,3 +237,70 @@ test('持倉設定：驗證、代號轉換、最多 10 檔', () => {
   assert.equal(many.positions.length, 10);
   assert.match(many.warnings[0], /最多 10 檔/);
 });
+
+// ---------- 代號搜尋 / 槓桿自動判斷（site/lookup.js）----------
+import vm from 'node:vm';
+import { readFileSync } from 'node:fs';
+import { parsePipeListing } from '../lib/symbols.mjs';
+import { yahooSymbol } from '../lib/positions.mjs';
+const ctx = {};
+vm.runInNewContext(readFileSync(new URL('../site/lookup.js', import.meta.url), 'utf8'), ctx);
+const L = ctx.Lookup;
+const SYM = {
+  US: [
+    ['SOXL', 'Direxion Daily Semiconductor Bull 3X ETF', 1], ['SOXS', 'Direxion Daily Semiconductor Bear 3X ETF', 1], ['SOXX', 'iShares Semiconductor ETF', 1],
+    ['TSLL', 'Direxion Daily TSLA Bull 2X ETF', 1], ['TSLA', 'Tesla, Inc.', 0],
+    ['NVDX', 'T-Rex 2X Long NVIDIA Daily Target ETF', 1], ['NVDA', 'NVIDIA Corporation', 0], ['NVDL', 'GraniteShares 2x Long NVDA Daily ETF', 1],
+    ['MVLL', 'GraniteShares 2x Long MRVL Daily ETF', 1], ['MRVL', 'Marvell Technology, Inc.', 0],
+    ['MUU', 'Direxion Daily MU Bull 2X ETF', 1], ['MU', 'Micron Technology, Inc.', 0],
+    ['SNXX', 'Tradr 2X Long SNDK Daily ETF', 1], ['SNDK', 'Sandisk Corporation', 0],
+    ['AMDL', 'GraniteShares 2x Long AMD Daily ETF', 1], ['AMD', 'Advanced Micro Devices, Inc.', 0],
+    ['TQQQ', 'ProShares UltraPro QQQ', 1], ['SQQQ', 'ProShares UltraPro Short QQQ', 1], ['QQQ', 'Invesco QQQ Trust, Series 1', 1],
+    ['PSQ', 'ProShares Short QQQ', 1], ['AAPL', 'Apple Inc.', 0], ['SPY', 'SPDR S&P 500 ETF Trust', 1], ['S', 'SentinelOne, Inc.', 0],
+  ],
+  TW: [['00631L', '元大台灣50正2'], ['00632R', '元大台灣50反1'], ['00663L', '國泰臺灣加權正2'], ['0050', '元大台灣50'], ['2330', '台積電']],
+  TWO: [['6488', '環球晶']],
+};
+const IDX = L.makeIndex(SYM);
+const pick = (q) => L.suggest(IDX, L.search(IDX, q)[0]);
+const brief = (x) => [x.ticker, x.market, x.type, x.underlying, x.leverage, x.semi, x.resolved].join('|');
+
+test('搜尋：代號完全相符優先、名稱（含中文）可搜', () => {
+  assert.equal(L.search(IDX, 'soxl')[0].s, 'SOXL');
+  assert.equal(L.search(IDX, '台積')[0].s, '2330');
+  assert.equal(L.search(IDX, 'nvidia')[0].s, 'NVDA');
+  assert.equal(L.search(IDX, '環球')[0].m, 'TWO');
+  assert.equal(L.search(IDX, '0050')[0].s, '0050');
+  assert.equal(L.search(IDX, '').length, 0);
+});
+
+test('槓桿 ETF 自動判斷：倍數、方向、標的', () => {
+  assert.equal(brief(pick('SOXL')), 'SOXL|US|leveraged|SOXX|3|true|true');
+  assert.equal(brief(pick('SOXS')), 'SOXS|US|leveraged|SOXX|-3|true|true');
+  assert.equal(brief(pick('TSLL')), 'TSLL|US|leveraged|TSLA|2|false|true');
+  assert.equal(brief(pick('NVDX')), 'NVDX|US|leveraged|NVDA|2|true|true');
+  assert.equal(brief(pick('MVLL')), 'MVLL|US|leveraged|MRVL|2|true|true');
+  assert.equal(brief(pick('MUU')), 'MUU|US|leveraged|MU|2|true|true');
+  assert.equal(brief(pick('SNXX')), 'SNXX|US|leveraged|SNDK|2|true|true');
+  assert.equal(brief(pick('AMDL')), 'AMDL|US|leveraged|AMD|2|true|true');
+  assert.equal(brief(pick('TQQQ')), 'TQQQ|US|leveraged|QQQ|3|false|true');
+  assert.equal(brief(pick('SQQQ')), 'SQQQ|US|leveraged|QQQ|-3|false|true');
+  assert.equal(brief(pick('PSQ')), 'PSQ|US|leveraged|QQQ|-1|false|true');
+  assert.equal(brief(pick('00631L')), '00631L|TW|leveraged|0050|2|true|true');
+  assert.equal(brief(pick('00632R')), '00632R|TW|leveraged|0050|-1|true|true');
+  assert.equal(brief(pick('00663L')), '00663L|TW|leveraged|^TWII|2|false|true');
+  assert.equal(brief(pick('AAPL')), 'AAPL|US|stock||||false|true'.replace('||||', '|||'));
+  assert.equal(brief(pick('QQQ')), 'QQQ|US|etf|||false|true');
+  assert.equal(brief(pick('0050')), '0050|TW|etf|||true|true');
+  assert.equal(brief(pick('2330')), '2330|TW|stock|||true|true');
+});
+
+test('代號檔解析與 Yahoo 代碼轉換', () => {
+  const nl = 'Symbol|Security Name|Market Category|Test Issue|Financial Status|Round Lot Size|ETF|NextShares\nTSLL|Direxion Daily TSLA Bull 2X ETF|G|N|N|100|Y|N\nZZZT|Test|Q|Y|N|100|N|N\nAAPL|Apple Inc. - Common Stock|Q|N|N|100|N|N\nFile Creation Time: 1105202608:01|||||||';
+  assert.deepEqual(parsePipeListing(nl, 'Symbol'), [{ s: 'TSLL', n: 'Direxion Daily TSLA Bull 2X ETF', e: 1 }, { s: 'AAPL', n: 'Apple Inc.', e: 0 }]);
+  const ol = 'ACT Symbol|Security Name|Exchange|CQS Symbol|ETF|Round Lot Size|Test Issue|NASDAQ Symbol\nSOXL|Direxion Daily Semiconductor Bull 3X ETF|P|SOXL|Y|100|N|SOXL\nBRK.B|Berkshire Hathaway Inc. Class B|N|BRK.B|N|100|N|BRK.B';
+  assert.deepEqual(parsePipeListing(ol, 'ACT Symbol').map((r) => r.s), ['SOXL', 'BRK.B']);
+  assert.equal(yahooSymbol('BRK.B', 'US'), 'BRK-B');
+  assert.equal(yahooSymbol('^TWII', 'TW'), '^TWII');
+  assert.equal(yahooSymbol('6488', 'TWO'), '6488.TWO');
+});

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { yahooDaily, nasdaqDaily, cnnFearGreed, yahooEarnings, earningsDays, sleep } from './lib/sources.mjs';
 import { updateChips, summarizeChips } from './lib/chips.mjs';
+import { buildSymbols } from './lib/symbols.mjs';
 import { analyze, DEFAULT_STRATEGIES, DECAY_THRESHOLD, DECAY_WINDOW } from './lib/strategies.mjs';
 import { sma, rsi, last } from './lib/indicators.mjs';
 import { usSentiment, twSentiment, semiSentiment, rating } from './lib/sentiment.mjs';
@@ -16,6 +17,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const MOCK = args.includes('--mock');
 const POS_FILE = args.includes('--positions') ? path.resolve(args[args.indexOf('--positions') + 1]) : null;
+const SYMBOLS_PREV = args.includes('--symbols-prev') ? path.resolve(args[args.indexOf('--symbols-prev') + 1]) : null;
 const HISTORY = args.includes('--history') ? path.resolve(args[args.indexOf('--history') + 1]) : null;
 const OUT = path.resolve(args.includes('--out') ? args[args.indexOf('--out') + 1] : path.join(__dirname, 'dist'));
 
@@ -309,6 +311,22 @@ async function main() {
   for (const f of await readdir(siteDir)) await copyFile(path.join(siteDir, f), path.join(OUT, f));
   await writeFile(path.join(OUT, 'data.json'), JSON.stringify(out));
   await writeFile(path.join(OUT, 'chips-history.json'), JSON.stringify(chipsHistory));
+
+  // ---- 代號清單（網頁「持倉設定」的搜尋用）；抓不到就沿用上一版 ----
+  let symbolList = null;
+  if (MOCK) {
+    const { mockSymbols } = await import('./test/mock.mjs');
+    symbolList = mockSymbols();
+  } else {
+    try {
+      symbolList = await buildSymbols();
+      console.log(`代號清單：美股 ${symbolList.US.length}、上市 ${symbolList.TW.length}、上櫃 ${symbolList.TWO.length}`);
+    } catch (e) {
+      console.log(`代號清單更新失敗，沿用上一版：${e.message}`);
+      if (SYMBOLS_PREV) symbolList = await readFile(SYMBOLS_PREV, 'utf8').then(JSON.parse).catch(() => null);
+    }
+  }
+  if (symbolList) await writeFile(path.join(OUT, 'symbols.json'), JSON.stringify(symbolList));
   console.log(`OK → ${OUT}/data.json  positions=${positions.length} markets=${markets.length}`);
   if (warnings.length) console.log('警告：\n- ' + warnings.join('\n- '));
 }

@@ -5,7 +5,7 @@
 - 網址：https://steveeeesuuuu.github.io/portfolio-monitor/
 - 更新時間：台北 16:17（台股收盤後）、06:23（美股收盤後），週一至週五
 - 手動更新：網頁上按「⟳ 更新」（約 1–3 分鐘後自動換新），或 Actions → 「每日股市情緒 Dashboard」→ Run workflow
-- 持倉：網頁上按「持倉設定」增刪（最多 10 檔），儲存後自動重新計算；設定存在 `dashboard/positions.json`
+- 持倉：網頁上按「持倉設定」增刪（最多 10 檔），輸入代號或名稱即可搜尋（美股、台股上市、上櫃），槓桿 ETF 自動判斷倍數與標的，儲存後自動重新計算；設定存在 `dashboard/positions.json`
 - 「更新」與「持倉設定」需要一次性設定 GitHub Fine-grained token（只授權此 repo 的 Actions、Contents 讀寫），權杖只存在使用者自己的瀏覽器
 
 ## 內容

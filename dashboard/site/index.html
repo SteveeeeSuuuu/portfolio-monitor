@@ -152,6 +152,15 @@ dialog#posDialog::backdrop { background: rgba(0,0,0,.45); }
 .pos-row label.chk { flex-direction: row; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-2); padding-bottom: 7px; white-space: nowrap; }
 .pos-row label.wide { grid-column: 2 / 8; }
 .pos-row .del { align-self: end; }
+.ac-wrap { position: relative; }
+ul.ac { position: absolute; top: 100%; left: 0; z-index: 5; width: max(100%, 340px); max-width: calc(100vw - 48px); margin: 4px 0 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--axis); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+ul.ac li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline; padding: 7px 8px; border-radius: 6px; font-size: 13px; color: var(--ink); cursor: pointer; }
+ul.ac li.muted { display: block; color: var(--muted); cursor: default; }
+ul.ac li[aria-selected="true"], ul.ac li[data-k]:hover { background: var(--surface-2); }
+.ac-n { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-m { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.pos-row .hint { grid-column: 2 / -1; font-size: 12px; color: var(--good-text); }
+.pos-row .hint.warn { color: #b97d00; }
 .pr-num { color: var(--muted); font-size: 12px; padding-bottom: 8px; }
 .pos-row input:not([type=checkbox]), .pos-row select, .token-row input { font: inherit; font-size: 14px; color: var(--ink); background: var(--page); border: 1px solid var(--axis); border-radius: 8px; padding: 6px 8px; width: 100%; min-width: 0; }
 #posAdd { margin-top: 10px; }
@@ -165,6 +174,7 @@ dialog#posDialog::backdrop { background: rgba(0,0,0,.45); }
   .pr-num { grid-column: 1 / -1; padding: 0; font-weight: 700; color: var(--ink-2); }
   .pos-row label.wide { grid-column: 1 / -1; }
   .pos-row label.chk { padding-bottom: 0; }
+  .pos-row .hint { grid-column: 1 / -1; }
 }
 .loading { padding: 60px 0; text-align: center; color: var(--muted); }
 @media (max-width: 640px) {
@@ -214,7 +224,7 @@ dialog#posDialog::backdrop { background: rgba(0,0,0,.45); }
   <p class="note" id="posSrc" style="margin-top:0"></p>
   <div id="posRows"></div>
   <button class="chip" id="posAdd" type="button">＋ 新增一檔</button>
-  <p class="note">市場：美股填美國代號（NVDX）；台股填數字代號（00631L），上市 / 上櫃要選對。槓桿 ETF 需填標的與倍數（反向填負數）；「半導體 / AI」用於集中度警示。最多 10 檔。</p>
+  <p class="note">在「代號或名稱」輸入代號或名稱（例：SOXL、台積電、NVIDIA），從清單點選後會自動帶入市場、類型；槓桿 ETF 會自動判斷倍數與標的，請確認。也可以手動修改。「半導體 / AI」用於集中度警示。最多 10 檔。</p>
   <details id="tokenBox" class="token-box">
     <summary>GitHub 權杖（更新與儲存需要）：<span id="tokenState"></span></summary>
     <ol class="note">
@@ -230,6 +240,7 @@ dialog#posDialog::backdrop { background: rgba(0,0,0,.45); }
   <div class="dlg-foot"><button class="chip" id="posCancel" type="button">取消</button><button class="chip primary" id="posSave" type="button">儲存並重新計算</button></div>
 </dialog>
 <script src="chart.umd.js"></script>
+<script src="lookup.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -482,7 +482,7 @@
     const lev = r.type === 'leveraged';
     return `<div class="pos-row" data-i="${i}">
       <div class="pr-num">${i + 1}</div>
-      <label>代號<input data-f="ticker" value="${esc(r.ticker)}" placeholder="NVDX" autocapitalize="characters" spellcheck="false"></label>
+      <label class="ac-wrap">代號或名稱<input data-f="ticker" value="${esc(r.ticker)}" placeholder="輸入代號或名稱搜尋" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="ac${i}"><ul class="ac" id="ac${i}" role="listbox" hidden></ul></label>
       <label>市場<select data-f="market">${opt(MARKET_OPTS, r.market)}</select></label>
       <label>類型<select data-f="type">${opt(TYPE_OPTS, r.type)}</select></label>
       <label${lev ? '' : ' class="off"'}>標的<input data-f="underlying" value="${esc(r.underlying ?? '')}" placeholder="NVDA" ${lev ? '' : 'disabled'} autocapitalize="characters" spellcheck="false"></label>
@@ -490,6 +490,7 @@
       <label class="chk"><input data-f="semi" type="checkbox"${r.semi ? ' checked' : ''}>半導體 / AI</label>
       <label class="wide">備註<input data-f="note" value="${esc(r.note ?? '')}" maxlength="200" placeholder="（選填）"></label>
       <button type="button" class="chip del" data-del="${i}" aria-label="刪除第 ${i + 1} 筆">刪除</button>
+      ${r.hint ? `<div class="hint ${r.hintWarn ? 'warn' : ''}">${esc(r.hint)}</div>` : ''}
     </div>`;
   }
   function drawRows() {
@@ -507,6 +508,7 @@
         else if (f === 'leverage') r.leverage = inp.value === '' ? null : Number(inp.value);
         else if (f === 'ticker' || f === 'underlying') r[f] = inp.value.trim().toUpperCase();
         else r[f] = inp.value;
+        if (f === 'ticker' && r.ticker && !TICKER_RE.test(r.ticker) && !r.hintWarn) Object.assign(r, { hint: '請從下拉清單選一檔，或直接輸入代號', hintWarn: true });
       });
     });
   }
@@ -527,6 +529,69 @@
     return errs;
   }
 
+  // ----- 代號搜尋（symbols.json + lookup.js）-----
+  let symIdx = null;
+  let symLoading = null;
+  function loadSymbols() {
+    if (symIdx || symLoading || !window.Lookup) return symLoading;
+    symLoading = fetch('symbols.json', { cache: 'no-cache' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d) => (symIdx = window.Lookup.makeIndex(d)))
+      .catch(() => null)
+      .finally(() => (symLoading = null));
+    return symLoading;
+  }
+  let acTimer = null;
+  let acItems = [];
+  let acActive = -1;
+  function acClose(input) {
+    const ul = input?.parentElement?.querySelector('.ac');
+    if (ul) ul.hidden = true;
+    input?.setAttribute('aria-expanded', 'false');
+    acItems = [];
+    acActive = -1;
+  }
+  async function acShow(input) {
+    const ul = input.parentElement.querySelector('.ac');
+    const q = input.value.trim();
+    if (!q) return acClose(input);
+    if (!symIdx) {
+      ul.innerHTML = '<li class="muted">代號清單載入中…</li>';
+      ul.hidden = false;
+      await loadSymbols();
+      if (!symIdx) {
+        ul.innerHTML = '<li class="muted">代號清單暫時無法載入，請直接輸入代號</li>';
+        return;
+      }
+    }
+    acItems = window.Lookup.search(symIdx, q, 8);
+    acActive = acItems.length ? 0 : -1;
+    const MN = window.Lookup.MARKET_NAME;
+    ul.innerHTML = acItems.length
+      ? acItems.map((r, k) => `<li role="option" data-k="${k}" aria-selected="${k === acActive}"><b>${esc(r.s)}</b><span class="ac-n">${esc(r.n)}</span><span class="ac-m">${esc(MN[r.m])}${r.e ? '・ETF' : ''}</span></li>`).join('')
+      : '<li class="muted">找不到符合的股票</li>';
+    ul.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+  }
+  function acHighlight(input) {
+    input.parentElement.querySelectorAll('.ac li[data-k]').forEach((li) => li.setAttribute('aria-selected', String(Number(li.dataset.k) === acActive)));
+  }
+  function acApply(input, k) {
+    const row = acItems[k];
+    if (!row) return;
+    readRows();
+    const i = Number(input.closest('.pos-row').dataset.i);
+    const sg = window.Lookup.suggest(symIdx, row);
+    const r = editRows[i];
+    Object.assign(r, { ticker: sg.ticker, market: sg.market, type: sg.type, underlying: sg.underlying, leverage: sg.leverage, semi: sg.semi });
+    if (!r.note) r.note = sg.name;
+    if (sg.type === 'leveraged' && !sg.underlying) Object.assign(r, { hint: `已判斷為 ${sg.leverage} 倍槓桿 ETF，但找不到標的，請手動填寫標的代號`, hintWarn: true });
+    else if (sg.type === 'leveraged') Object.assign(r, { hint: `已自動判斷：${sg.leverage > 0 ? '' : '反向 '}${Math.abs(sg.leverage)} 倍、標的 ${sg.underlying}，請確認`, hintWarn: false });
+    else Object.assign(r, { hint: `已選：${sg.name}（${sg.type === 'etf' ? 'ETF' : '個股'}）`, hintWarn: false });
+    acClose(input);
+    drawRows();
+  }
+
   async function openSettings(tokenFirst = false) {
     const dlg = $('#posDialog');
     editRows = (DATA?.positionsConfig || []).map((r) => ({ ...r }));
@@ -537,6 +602,7 @@
     $('#posSrc').textContent = '目前顯示的是網頁上的持倉資料。';
     drawRows();
     dlg.showModal();
+    loadSymbols();
     if (tokenFirst || !store.get(TOKEN_KEY)) {
       $('#tokenBox').open = true;
       $('#tokenInput').focus();
@@ -613,6 +679,38 @@
     const r = editRows[Number(e.target.closest('.pos-row').dataset.i)];
     if (r.type === 'leveraged' && !r.leverage) r.leverage = 2;
     drawRows();
+  });
+  $('#posRows').addEventListener('input', (e) => {
+    if (e.target.dataset?.f !== 'ticker') return;
+    clearTimeout(acTimer);
+    acTimer = setTimeout(() => acShow(e.target), 120);
+  });
+  $('#posRows').addEventListener('keydown', (e) => {
+    if (e.target.dataset?.f !== 'ticker') return;
+    const open = !e.target.parentElement.querySelector('.ac').hidden;
+    if (e.key === 'Escape' && open) {
+      e.preventDefault();
+      e.stopPropagation();
+      return acClose(e.target);
+    }
+    if (!acItems.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      acActive = (acActive + (e.key === 'ArrowDown' ? 1 : -1) + acItems.length) % acItems.length;
+      acHighlight(e.target);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      acApply(e.target, acActive);
+    }
+  });
+  $('#posRows').addEventListener('mousedown', (e) => {
+    const li = e.target.closest('.ac li[data-k]');
+    if (!li) return;
+    e.preventDefault();
+    acApply(li.closest('.ac-wrap').querySelector('input'), Number(li.dataset.k));
+  });
+  $('#posRows').addEventListener('focusout', (e) => {
+    if (e.target.dataset?.f === 'ticker') setTimeout(() => acClose(e.target), 150);
   });
   $('#posSave').addEventListener('click', savePositions);
   $('#posCancel').addEventListener('click', () => $('#posDialog').close());

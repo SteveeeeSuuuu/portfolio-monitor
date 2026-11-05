@@ -3,6 +3,12 @@ export const MAX_POSITIONS = 10;
 const SUFFIX = { US: '', TW: '.TW', TWO: '.TWO' };
 const TYPES = ['leveraged', 'stock', 'etf'];
 const TICKER_RE = /^[A-Z0-9][A-Z0-9.\-]{0,11}$/;
+const UNDERLYING_RE = /^\^?[A-Z0-9][A-Z0-9.\-]{0,11}$/; // 可填指數，例：^TWII
+/** 轉成 Yahoo 代碼：指數（^開頭）原樣；美股的 . 換成 -（BRK.B → BRK-B）；台股加 .TW / .TWO */
+export function yahooSymbol(code, market) {
+  if (code.startsWith('^')) return code;
+  return market === 'US' ? code.replace(/\./g, '-') : code + SUFFIX[market];
+}
 
 /** raw: positions.json 內容（{positions:[...]} 或陣列）→ { positions, warnings } */
 export function normalizePositions(raw) {
@@ -35,7 +41,7 @@ export function normalizePositions(raw) {
     if (type === 'leveraged') {
       underlying = String(p?.underlying ?? '').trim().toUpperCase();
       leverage = Number(p?.leverage);
-      if (!TICKER_RE.test(underlying)) {
+      if (!UNDERLYING_RE.test(underlying)) {
         warnings.push(`${ticker}：槓桿型需要填標的代號，已略過`);
         continue;
       }
@@ -61,8 +67,8 @@ export function normalizePositions(raw) {
       leverage,
       semi: Boolean(p?.semi),
       note: String(p?.note ?? '').slice(0, 200),
-      symbol: ticker + SUFFIX[market],
-      underlyingSymbol: underlying ? underlying + SUFFIX[market] : null,
+      symbol: yahooSymbol(ticker, market),
+      underlyingSymbol: underlying ? yahooSymbol(underlying, market) : null,
       currency: market === 'US' ? 'USD' : 'TWD',
     });
   }
