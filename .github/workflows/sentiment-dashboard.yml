@@ -1,0 +1,72 @@
+name: 每日股市情緒 Dashboard
+
+on:
+  schedule:
+    # 台股收盤後（台北 16:17，三大法人資料已公布）
+    - cron: '17 8 * * 1-5'
+    # 美股收盤後（台北 06:23；夏令 / 冬令時間收盤都已過）
+    - cron: '23 22 * * 1-5'
+  workflow_dispatch:
+  push:
+    branches: [main, claude/stock-sentiment-dashboard-hkjgkf]
+    paths:
+      - 'dashboard/**'
+      - '.github/workflows/sentiment-dashboard.yml'
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: sentiment-dashboard
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 單元測試（指標 / 策略）
+        working-directory: dashboard
+        run: node --test test/*.test.mjs
+
+      - name: 取得上次部署的籌碼快取
+        run: |
+          git fetch --depth=1 origin gh-pages 2>/dev/null \
+            && git show origin/gh-pages:chips-history.json > chips-history.json 2>/dev/null \
+            || echo '{"days":{}}' > chips-history.json
+          wc -c chips-history.json
+
+      - name: 抓資料並產生網頁
+        working-directory: dashboard
+        run: node build.mjs --history ../chips-history.json --out ../_site
+
+      - name: 部署到 gh-pages 分支
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./_site
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: 'dashboard: 更新資料'
+
+      - name: 確認 GitHub Pages 已啟用（gh-pages 分支）
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api "repos/${GITHUB_REPOSITORY}/pages" >/dev/null 2>&1; then
+            echo "Pages 已啟用"
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/pages" \
+              -f 'source[branch]=gh-pages' -f 'source[path]=/' \
+              && echo "已啟用 Pages" \
+              || echo "::warning::無法自動啟用 Pages，請到 Settings → Pages 選 gh-pages 分支"
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/pages" --jq '"Pages URL: " + .html_url + "  status: " + (.status // "n/a")' || true

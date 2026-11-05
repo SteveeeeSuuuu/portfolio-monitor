@@ -1,0 +1,19 @@
+name: 資料來源連線診斷
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node dashboard/scripts/probe.mjs
+      - name: curl 對照（TLS 指紋不同）
+        run: |
+          curl -sS -o /dev/null -w "%{http_code} curl yahoo q1\n" -A "Mozilla/5.0" "https://query1.finance.yahoo.com/v8/finance/chart/NVDA?range=1mo&interval=1d" || true
+          curl -sS -o /dev/null -w "%{http_code} curl yahoo q2\n" -A "Mozilla/5.0" "https://query2.finance.yahoo.com/v8/finance/chart/NVDA?range=1mo&interval=1d" || true
