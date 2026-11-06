@@ -1,26 +1,18 @@
-// 在 GitHub Actions 上測試各資料來源是否可連（診斷用）
-const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
-const t = async (name, url, opts = {}) => {
+// 診斷：檢查線上 GitHub Pages 實際提供的內容
+const site = 'https://steveeeesuuuu.github.io/portfolio-monitor/';
+for (const u of ['', 'data.json?t=' + Date.now(), 'data.json']) {
   try {
-    const r = await fetch(url, { ...opts, signal: AbortSignal.timeout(25000) });
+    const r = await fetch(site + u, { cache: 'no-store' });
     const body = await r.text();
-    console.log(`${r.status}  ${name}  len=${body.length}  ${body.slice(0, 300).replace(/\s+/g, ' ')}`);
-    return { r, body };
+    const h = ['cache-control', 'age', 'x-cache', 'last-modified', 'etag'].map((k) => `${k}=${r.headers.get(k)}`).join(' ');
+    console.log(`${r.status} /${u}  ${h}`);
+    if (u.startsWith('data.json')) {
+      const d = JSON.parse(body);
+      console.log('   generatedAt', d.generatedAt, 'positions', d.positions.map((p) => p.ticker).join(','), 'warnings', d.warnings.length);
+    } else {
+      console.log('   scripts', body.match(/<script src="[^"]+"/g)?.join(' '));
+    }
   } catch (e) {
-    console.log(`ERR  ${name}  ${e.message}`);
-    return {};
+    console.log('ERR', u, e.message);
   }
-};
-const nl = await t('nasdaqtrader nasdaqlisted', 'https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt', { headers: { 'User-Agent': UA } });
-console.log('  tail:', nl.body?.slice(-200));
-const ol = await t('nasdaqtrader otherlisted', 'https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt', { headers: { 'User-Agent': UA } });
-for (const s of ['SOXL', 'TSLL', 'NVDX', 'MVLL', 'MUU', 'SNXX', 'AMDL', 'TQQQ', 'SQQQ', 'NVDL', 'SOXS', 'UPRO']) {
-  const line = (nl.body + '\n' + ol.body).split('\n').find((l) => l.startsWith(s + '|'));
-  console.log('  ', s, '=>', line);
 }
-const tw = await t('twse openapi STOCK_DAY_ALL', 'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL', { headers: { 'User-Agent': UA } });
-try { const j = JSON.parse(tw.body); console.log('  count', j.length, JSON.stringify(j.find((x) => x.Code === '00631L')), JSON.stringify(j.find((x) => x.Code === '2330'))); } catch (e) { console.log('  parse', e.message); }
-const tp = await t('tpex openapi mainboard quotes', 'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes', { headers: { 'User-Agent': UA } });
-try { const j = JSON.parse(tp.body); console.log('  count', j.length, 'keys', Object.keys(j[0]).join(','), JSON.stringify(j.find((x) => JSON.stringify(x).includes('6488')))); } catch (e) { console.log('  parse', e.message); }
-const tpe = await t('tpex openapi etf', 'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes', { headers: { 'User-Agent': UA } });
-try { const j = JSON.parse(tpe.body); console.log('  count', j.length, 'keys', Object.keys(j[0]).join(',')); } catch (e) { console.log('  parse', e.message); }
