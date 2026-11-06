@@ -425,6 +425,7 @@
       const j = await gh(`/repos/${g.repo}/actions/workflows/${g.workflow}/runs?event=${event}&branch=${encodeURIComponent(g.branch)}&per_page=5`);
       run = (j.workflow_runs || []).find((r) => new Date(r.created_at).getTime() >= t0 - 30e3) || run;
       const sec = Math.round((Date.now() - start) / 1000);
+      if (!run && sec > 90) throw new Error('GitHub 沒有開始計算，請按「⟳ 更新」再試一次');
       if (run && run.status === 'completed') break;
       opStatus(`${label}：${!run ? '等待 GitHub 建立工作' : run.status === 'in_progress' ? '抓資料、計算中' : '排隊中'}…（${sec} 秒）<span class="muted">　通常 1–3 分鐘</span>`, 'warn');
       await sleep(8000);
@@ -476,6 +477,7 @@
   const TICKER_RE = /^[A-Z0-9][A-Z0-9.\-]{0,11}$/;
   let editRows = [];
   let editSha = null;
+  let editOriginal = null; // GitHub 上目前的 positions.json 內容（判斷有無變更）
 
   function rowHtml(r, i) {
     const opt = (list, v) => list.map(([k, l]) => `<option value="${k}"${k === v ? ' selected' : ''}>${l}</option>`).join('');
@@ -596,6 +598,7 @@
     const dlg = $('#posDialog');
     editRows = (DATA?.positionsConfig || []).map((r) => ({ ...r }));
     editSha = null;
+    editOriginal = null;
     $('#posErr').textContent = '';
     $('#tokenInput').value = '';
     $('#tokenState').textContent = store.get(TOKEN_KEY) ? '已設定（只存在這台裝置的瀏覽器）' : '尚未設定';
@@ -613,7 +616,8 @@
         const g = DATA.github;
         const f = await gh(`/repos/${g.repo}/contents/${g.positionsPath}?ref=${encodeURIComponent(g.branch)}`);
         editSha = f.sha;
-        const j = JSON.parse(b64decode(f.content));
+        editOriginal = b64decode(f.content);
+        const j = JSON.parse(editOriginal);
         editRows = (j.positions || []).map((r) => ({ ticker: '', market: 'US', type: 'stock', underlying: null, leverage: null, semi: false, note: '', ...r }));
         $('#posSrc').textContent = '已讀取 GitHub 上最新的持倉設定。';
         drawRows();
@@ -640,17 +644,32 @@
       if (r.note?.trim()) o.note = r.note.trim();
       return o;
     });
+    const content = JSON.stringify({ positions: clean }, null, 2) + '\n';
+    let saved = false;
     setBusy(true);
     const t0 = Date.now();
     try {
-      if (!editSha) editSha = (await gh(`/repos/${g.repo}/contents/${g.positionsPath}?ref=${encodeURIComponent(g.branch)}`)).sha;
+      if (!editSha) {
+        const f = await gh(`/repos/${g.repo}/contents/${g.positionsPath}?ref=${encodeURIComponent(g.branch)}`);
+        editSha = f.sha;
+        editOriginal = b64decode(f.content);
+      }
+      // 內容沒變：GitHub 不會觸發重新計算，改成直接更新
+      if (editOriginal !== null && editOriginal.trim() === content.trim()) {
+        $('#posDialog').close();
+        setBusy(false);
+        opStatus('持倉設定沒有變更，直接重新計算…', 'warn');
+        return await refreshNow();
+      }
       await gh(`/repos/${g.repo}/contents/${g.positionsPath}`, {
         method: 'PUT',
-        body: JSON.stringify({ message: `持倉設定：${clean.map((r) => r.ticker).join(', ') || '（清空）'}`, content: b64encode(JSON.stringify({ positions: clean }, null, 2) + '\n'), sha: editSha, branch: g.branch }),
+        body: JSON.stringify({ message: `持倉設定：${clean.map((r) => r.ticker).join(', ') || '（清空）'}`, content: b64encode(content), sha: editSha, branch: g.branch }),
       });
+      saved = true;
       $('#posDialog').close();
       await waitForRebuild('push', t0, '持倉已儲存，重新計算中');
     } catch (e) {
+      if (saved) return opStatus(`持倉已儲存，但${esc(e.message)}`, 'warn');
       $('#posErr').textContent = `儲存失敗：${e.message}`;
       opStatus(`儲存失敗：${esc(e.message)}`, 'crit');
     } finally {
