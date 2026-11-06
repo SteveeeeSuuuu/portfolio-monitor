@@ -2,6 +2,7 @@
 // 產生 dashboard 用的 data.json，並把網頁輸出到 dist/
 // 用法：node build.mjs [--mock] [--out dist]
 import { mkdir, writeFile, copyFile, readdir, readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { yahooDaily, nasdaqDaily, cnnFearGreed, yahooEarnings, earningsDays, sleep } from './lib/sources.mjs';
@@ -308,7 +309,15 @@ async function main() {
 
   await mkdir(OUT, { recursive: true });
   const siteDir = path.join(__dirname, 'site');
-  for (const f of await readdir(siteDir)) await copyFile(path.join(siteDir, f), path.join(OUT, f));
+  // 靜態檔加上內容雜湊版本（?v=），程式一改手機瀏覽器就會抓新版，不會卡在快取
+  const ver = {};
+  for (const f of await readdir(siteDir)) {
+    const buf = await readFile(path.join(siteDir, f));
+    ver[f] = createHash('sha256').update(buf).digest('hex').slice(0, 10);
+    if (f !== 'index.html') await copyFile(path.join(siteDir, f), path.join(OUT, f));
+  }
+  const html = (await readFile(path.join(siteDir, 'index.html'), 'utf8')).replace(/(src|href)="([\w.-]+\.(?:js|css))"/g, (m, attr, f) => (ver[f] ? `${attr}="${f}?v=${ver[f]}"` : m));
+  await writeFile(path.join(OUT, 'index.html'), html);
   await writeFile(path.join(OUT, 'data.json'), JSON.stringify(out));
   await writeFile(path.join(OUT, 'chips-history.json'), JSON.stringify(chipsHistory));
 
