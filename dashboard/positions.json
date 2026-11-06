@@ -62,6 +62,15 @@
       "leverage": 2,
       "semi": true,
       "note": "SanDisk 剛從 WD 分拆，流動性和價格發現尚未穩定"
+    },
+    {
+      "ticker": "SOXL",
+      "market": "US",
+      "type": "leveraged",
+      "underlying": "SOXX",
+      "leverage": 3,
+      "semi": true,
+      "note": "Direxion Daily Semiconductor Bull 3X ETF"
     }
   ]
 }
