@@ -7,8 +7,9 @@ on:
     # 美股收盤後（台北 06:23；夏令 / 冬令時間收盤都已過）
     - cron: '23 22 * * 1-5'
   workflow_dispatch:
+  # 只有 main 會自動部署（避免多個分支輪流覆蓋網頁）；其他分支可手動 Run workflow
   push:
-    branches: [main, claude/stock-sentiment-dashboard-hkjgkf]
+    branches: [main]
     paths:
       - 'dashboard/**'
       - '.github/workflows/sentiment-dashboard.yml'
