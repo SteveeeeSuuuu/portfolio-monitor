@@ -4,7 +4,9 @@
 
 - 網址：https://steveeeesuuuu.github.io/portfolio-monitor/
 - 更新時間：台北 16:17（台股收盤後）、06:23（美股收盤後），週一至週五
-- 手動更新：Actions → 「每日股市情緒 Dashboard」→ Run workflow
+- 手動更新：網頁上按「⟳ 更新」（約 1–3 分鐘後自動換新），或 Actions → 「每日股市情緒 Dashboard」→ Run workflow
+- 持倉：網頁上按「持倉設定」增刪（最多 10 檔），輸入代號或名稱即可搜尋（美股、台股上市、上櫃），槓桿 ETF 自動判斷倍數與標的，儲存後自動重新計算；設定存在 `dashboard/positions.json`
+- 「更新」與「持倉設定」需要一次性設定 GitHub Fine-grained token（只授權此 repo 的 Actions、Contents 讀寫），權杖只存在使用者自己的瀏覽器
 
 ## 內容
 | 區塊 | 說明 |
@@ -23,6 +25,6 @@ node --test test/*.test.mjs        # 單元測試
 node build.mjs --mock              # 假資料產生 dist/
 node build.mjs                     # 真實資料（需可連 Yahoo Finance）
 ```
-持倉清單在 `config.mjs`。
+持倉清單在 `positions.json`（市場：US / TW 上市 / TWO 上櫃；類型：leveraged / stock / etf），市場觀察清單在 `config.mjs`。
 
 籌碼資料逐日快取在 gh-pages 的 `chips-history.json`，每次只補抓缺少的日期（證交所有頻率限制，每次請求間隔約 3 秒）。

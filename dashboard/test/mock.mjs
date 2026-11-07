@@ -1,5 +1,8 @@
 // 本地測試用假資料（--mock）：可重現的隨機漫步，槓桿 ETF 由標的日報酬 ×2 產生
-import { POSITIONS } from '../config.mjs';
+import { readFileSync } from 'node:fs';
+import { normalizePositions } from '../lib/positions.mjs';
+
+const POSITIONS = normalizePositions(JSON.parse(readFileSync(new URL('../positions.json', import.meta.url), 'utf8'))).positions;
 
 function rng(seedStr) {
   let h = 2166136261;
@@ -47,8 +50,8 @@ function toBars(ds, rets, start, sym) {
 const N = 1260;
 export function mockDaily(sym) {
   const ds = dates(N);
-  const pos = POSITIONS.find((p) => p.symbol === sym);
-  if (pos) {
+  const pos = POSITIONS.find((p) => p.symbol === sym) || (/^(AAPL|6488\.TWO|SPY|QQQ)$/.test(sym) ? null : undefined);
+  if (pos && pos.underlyingSymbol) {
     const ur = returns(pos.underlyingSymbol, N, 0.025);
     return { symbol: sym, currency: pos.currency, partial: false, bars: toBars(ds, ur.map((x) => x * pos.leverage - 0.0001), 20, sym) };
   }
@@ -82,4 +85,14 @@ export function mockChips(dates) {
     };
   });
   return { days };
+}
+
+/** 假的代號清單（--mock） */
+export function mockSymbols() {
+  return {
+    generatedAt: new Date().toISOString(),
+    US: [['SOXL', 'Direxion Daily Semiconductor Bull 3X ETF', 1], ['SOXX', 'iShares Semiconductor ETF', 1], ['TSLL', 'Direxion Daily TSLA Bull 2X ETF', 1], ['TSLA', 'Tesla, Inc.', 0], ['NVDX', 'T-Rex 2X Long NVIDIA Daily Target ETF', 1], ['NVDA', 'NVIDIA Corporation', 0], ['AAPL', 'Apple Inc.', 0], ['TQQQ', 'ProShares UltraPro QQQ', 1], ['QQQ', 'Invesco QQQ Trust, Series 1', 1], ['XYZL', 'Example 2X Long Something Daily ETF', 1]],
+    TW: [['00631L', '元大台灣50正2'], ['0050', '元大台灣50'], ['2330', '台積電']],
+    TWO: [['6488', '環球晶']],
+  };
 }

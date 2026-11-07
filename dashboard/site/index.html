@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta http-equiv="Cache-Control" content="no-cache">
 <title>每日股市情緒</title>
 <meta name="description" content="每日自動更新的美股、台股、半導體情緒分數與持倉策略訊號">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M4 26 A12 12 0 0 1 28 26' fill='none' stroke='%232a78d6' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M16 26 L23 13' stroke='%23e34948' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
@@ -52,7 +54,7 @@ header.top { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-e
 h1 { font-size: 26px; line-height: 1.2; margin: 0; letter-spacing: .01em; }
 .sub { color: var(--ink-2); font-size: 13.5px; margin-top: 6px; }
 .controls { display: flex; gap: 8px; flex-wrap: wrap; }
-button.chip {
+button.chip { white-space: nowrap;
   font: inherit; font-size: 13px; color: var(--ink-2); background: var(--surface);
   border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; cursor: pointer;
 }
@@ -136,6 +138,45 @@ td.r, th.r { text-align: right; }
 footer { margin-top: 40px; font-size: 12.5px; color: var(--muted); }
 footer h3 { font-size: 14px; color: var(--ink-2); }
 footer li { margin-bottom: 4px; }
+button.chip.primary { background: var(--ink); color: var(--surface); border-color: var(--ink); font-weight: 600; }
+button.chip.primary:hover { background: var(--ink); color: var(--surface); opacity: .88; }
+button.chip:disabled { opacity: .45; cursor: not-allowed; }
+#opStatus a { color: inherit; }
+dialog#posDialog { width: min(760px, calc(100vw - 24px)); max-height: calc(100vh - 32px); border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--ink); padding: 18px; }
+dialog#posDialog::backdrop { background: rgba(0,0,0,.45); }
+.dlg-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.dlg-head h3 { margin: 0 0 6px; font-size: 18px; }
+.dlg-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; position: sticky; bottom: -18px; background: var(--surface); padding: 10px 0 2px; }
+.pos-row { display: grid; grid-template-columns: 22px 1.1fr 1fr 1fr 1fr 70px auto auto; gap: 6px 8px; align-items: end; padding: 10px 0; border-bottom: 1px solid var(--grid); }
+.pos-row label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--muted); min-width: 0; }
+.pos-row label.off { opacity: .4; }
+.pos-row label.chk { flex-direction: row; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-2); padding-bottom: 7px; white-space: nowrap; }
+.pos-row label.wide { grid-column: 2 / 8; }
+.pos-row .del { align-self: end; }
+.ac-wrap { position: relative; }
+ul.ac { position: absolute; top: 100%; left: 0; z-index: 5; width: max(100%, 340px); max-width: calc(100vw - 48px); margin: 4px 0 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--axis); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+ul.ac li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline; padding: 7px 8px; border-radius: 6px; font-size: 13px; color: var(--ink); cursor: pointer; }
+ul.ac li.muted { display: block; color: var(--muted); cursor: default; }
+ul.ac li[aria-selected="true"], ul.ac li[data-k]:hover { background: var(--surface-2); }
+.ac-n { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-m { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.pos-row .hint { grid-column: 2 / -1; font-size: 12px; color: var(--good-text); }
+.pos-row .hint.warn { color: #b97d00; }
+.pr-num { color: var(--muted); font-size: 12px; padding-bottom: 8px; }
+.pos-row input:not([type=checkbox]), .pos-row select, .token-row input { font: inherit; font-size: 14px; color: var(--ink); background: var(--page); border: 1px solid var(--axis); border-radius: 8px; padding: 6px 8px; width: 100%; min-width: 0; }
+#posAdd { margin-top: 10px; }
+.token-box { margin-top: 12px; border: 1px solid var(--grid); border-radius: 10px; padding: 10px 12px; }
+.token-box summary { cursor: pointer; font-size: 13.5px; font-weight: 600; }
+.token-box ol { padding-left: 18px; }
+.token-row { display: flex; gap: 6px; }
+.err { color: var(--crit-text); font-size: 13px; margin-top: 10px; }
+@media (max-width: 640px) {
+  .pos-row { grid-template-columns: 1fr 1fr; }
+  .pr-num { grid-column: 1 / -1; padding: 0; font-weight: 700; color: var(--ink-2); }
+  .pos-row label.wide { grid-column: 1 / -1; }
+  .pos-row label.chk { padding-bottom: 0; }
+  .pos-row .hint { grid-column: 1 / -1; }
+}
 .loading { padding: 60px 0; text-align: center; color: var(--muted); }
 @media (max-width: 640px) {
   .comp-head { display: none; }
@@ -158,10 +199,13 @@ footer li { margin-bottom: 4px; }
       <div class="sub" id="asof">載入中…</div>
     </div>
     <div class="controls">
+      <button class="chip primary" id="refreshBtn" type="button" title="立即重新抓資料並計算（約 1–3 分鐘）">⟳ 更新</button>
+      <button class="chip" id="posBtn" type="button">持倉設定</button>
       <button class="chip" id="colorBtn" type="button" title="切換漲跌顏色慣例">紅漲綠跌</button>
       <button class="chip" id="themeBtn" type="button">主題：自動</button>
     </div>
   </header>
+  <div id="opStatus" class="banner" role="status" aria-live="polite" hidden></div>
   <div id="banners"></div>
   <main id="app"><div class="loading">資料載入中…</div></main>
   <footer>
@@ -170,12 +214,34 @@ footer li { margin-bottom: 4px; }
       <li><b>自算情緒分數（0–100）</b>：每個成分取「當日數值在過去 252 個交易日中的百分位」，再等權平均。0–25 極度恐懼、25–45 恐懼、45–55 中性、55–75 貪婪、75–100 極度貪婪（與 CNN Fear &amp; Greed 同區間）。分數是相對過去一年的位置，不是絕對估值。</li>
       <li><b>持倉策略</b>依專案 <code>strategy-interface.md</code>：ma-cross（MA5/MA20 交叉、跌破 MA5 警示）、adx-trend（ADX(14) &gt; 25 確認趨勢，下跌趨勢記為 WARN）、decay-monitor（耗損 = 標的報酬 × 槓桿 − ETF 報酬，用還原股價；未提供買進日，以近 60 個交易日估算，&gt; 5% 警示）、rsi-momentum（RSI(14) &gt;70 超買 / &lt;30 超賣；預設不用於槓桿 ETF，只列參考值）。最終訊號依 summarize()：有 SELL → SELL；有 WARN → WARN；BUY 數 &gt; HOLD 數 → BUY；其餘 HOLD。</li>
       <li><b>台股籌碼</b>依《台股籌碼與市場槓桿觀察指南》：加權指數、融資餘額、融資維持率（估算）、借券賣出餘額、外資現貨買賣超、外資台指期多空淨額、融資餘額／市值，各列今日、五日、二十日變化，並以指數與融資的 5 日變化對應四種交叉判讀情境。</li>
+      <li><b>更新</b>：按「⟳ 更新」會請 GitHub Actions 立刻重抓資料（約 1–3 分鐘），完成後頁面自動換新；另外每個交易日台北 16:17 與 06:23 自動更新。「持倉設定」可增刪最多 10 檔，儲存後自動重新計算。</li>
       <li>資料來源：Yahoo Finance（價格）、CNN Fear &amp; Greed、臺灣證券交易所（融資融券、借券、三大法人、收盤行情、上市公司基本資料）、臺灣期貨交易所（期貨三大法人）。由 GitHub Actions 每個交易日台股收盤後與美股收盤後自動更新。</li>
       <li>本頁僅供個人研究參考，不構成任何投資建議。</li>
     </ul>
   </footer>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<dialog id="posDialog" aria-labelledby="posTitle">
+  <div class="dlg-head"><h3 id="posTitle">持倉設定</h3><span class="muted" id="posCount"></span></div>
+  <p class="note" id="posSrc" style="margin-top:0"></p>
+  <div id="posRows"></div>
+  <button class="chip" id="posAdd" type="button">＋ 新增一檔</button>
+  <p class="note">在「代號或名稱」輸入代號或名稱（例：SOXL、台積電、NVIDIA），從清單點選後會自動帶入市場、類型；槓桿 ETF 會自動判斷倍數與標的，請確認。也可以手動修改。「半導體 / AI」用於集中度警示。最多 10 檔。</p>
+  <details id="tokenBox" class="token-box">
+    <summary>GitHub 權杖（更新與儲存需要）：<span id="tokenState"></span></summary>
+    <ol class="note">
+      <li>開啟 <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">建立 Fine-grained token ↗</a></li>
+      <li>Repository access 選 <b>Only select repositories</b> → <b>portfolio-monitor</b></li>
+      <li>Permissions → Repository permissions：<b>Actions</b> 與 <b>Contents</b> 都設 <b>Read and write</b></li>
+      <li>建議設定到期日。產生後把 <code>github_pat_…</code> 貼到下面。</li>
+    </ol>
+    <div class="token-row"><input id="tokenInput" type="password" autocomplete="off" placeholder="github_pat_…" spellcheck="false"><button class="chip" id="tokenSave" type="button">儲存權杖</button><button class="chip" id="tokenClear" type="button">清除</button></div>
+    <p class="note">權杖只存在這台裝置的瀏覽器，不會上傳到網頁或 repo；別人打開網頁看不到，也不能用。在公用電腦上用完請按「清除」。</p>
+  </details>
+  <div class="err" id="posErr" role="alert"></div>
+  <div class="dlg-foot"><button class="chip" id="posCancel" type="button">取消</button><button class="chip primary" id="posSave" type="button">儲存並重新計算</button></div>
+</dialog>
+<script src="chart.umd.js"></script>
+<script src="lookup.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
